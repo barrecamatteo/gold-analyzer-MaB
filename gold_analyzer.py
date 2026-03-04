@@ -79,19 +79,7 @@ def auth_user(username, password):
         pass
     return None
 
-def register_user(username, password):
-    sb = get_sb()
-    if not sb:
-        return False
-    try:
-        sb.table("gold_users").insert({
-            "username": username,
-            "password_hash": hash_pw(password),
-            "created_at": get_italy_now().isoformat()
-        }).execute()
-        return True
-    except:
-        return False
+
 
 # === FRESHNESS ===
 def check_freshness(data_key, last_updated):
@@ -134,27 +122,17 @@ def main():
         st.markdown("*Analisi macro settimanale con scoring automatico*")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            tab1, tab2 = st.tabs(["Login", "Registrati"])
-            with tab1:
-                u = st.text_input("Username", key="lu")
-                p = st.text_input("Password", type="password", key="lp")
-                if st.button("Accedi", type="primary"):
-                    user = auth_user(u, p)
-                    if user:
-                        st.session_state.authenticated = True
-                        st.session_state.user_id = user.get("id", u)
-                        st.session_state.username = u
-                        st.rerun()
-                    else:
-                        st.error("Credenziali non valide")
-            with tab2:
-                nu = st.text_input("Username", key="ru")
-                np_ = st.text_input("Password", type="password", key="rp")
-                if st.button("Registrati"):
-                    if register_user(nu, np_):
-                        st.success("OK! Ora fai login.")
-                    else:
-                        st.error("Errore registrazione")
+            u = st.text_input("Username")
+            p = st.text_input("Password", type="password")
+            if st.button("Accedi", type="primary"):
+                user = auth_user(u, p)
+                if user:
+                    st.session_state.authenticated = True
+                    st.session_state.user_id = user.get("id", u)
+                    st.session_state.username = u
+                    st.rerun()
+                else:
+                    st.error("Credenziali non valide")
         return
 
     # MAIN APP
