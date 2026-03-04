@@ -180,29 +180,7 @@ def _calc_fed_trend(meetings):
     r = t.get((d1,d2),("mixed","Misto","?"))
     return {"trend":r[0],"trend_label":r[1],"trend_emoji":r[2]}
 
-def fetch_gold_news():
-    from duckduckgo_search import DDGS
-    queries = ["gold price forecast outlook this week","gold XAU USD analysis macro",
-               "central bank gold purchases latest","geopolitical risk gold safe haven",
-               "US treasury yields gold impact"]
-    all_news = {}
-    for q in queries:
-        try:
-            with DDGS() as ddgs:
-                all_news["_".join(q.split()[:3])] = list(ddgs.news(q, max_results=5, timelimit="w"))
-            time.sleep(0.5)
-        except Exception as e:
-            all_news[f"err_{q[:15]}"] = str(e)[:50]
-    return all_news
 
-def format_news_for_claude(news_data):
-    if not news_data: return "Nessuna notizia disponibile."
-    lines = []
-    for cat, results in news_data.items():
-        if isinstance(results, list):
-            for r in results:
-                lines.append(f"- [{r.get('date','')}] ({r.get('source','')}) {r.get('title','')}: {r.get('body','')[:200]}")
-    return "\n".join(lines[:30])
 
 # === SCORING ENGINE ===
 
@@ -248,7 +226,7 @@ def _bias_label(total):
     return "🔴🔴 Forte bias RIBASSISTA"
 
 def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
-                          cot_data=None, cb_data=None, news_score=0):
+                          cot_data=None, cb_data=None):
     scores = {}
     now = datetime.now()
 
@@ -363,10 +341,6 @@ def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
     s = GOLD_SEASONALITY.get(now.month,{"score":0,"label":"Neutro","reason":""})
     scores["SEASONALITY"] = _make_score("Stagionalita",now.strftime("%B"),now.month,
         now.strftime("%Y-%m-%d"),"N/A",None,s["score"],0,1,"Pattern storico",f"{s['label']} — {s['reason']}")
-
-    # 11. News
-    scores["NEWS"] = _make_score("News / Geopolitica","Analisi Claude",news_score,
-        now.strftime("%Y-%m-%d"),"N/A",None,news_score,0,1,"Claude AI","Punteggio assegnato da Claude AI")
 
     # Gold price
     g = yahoo_data.get("GOLD",{})
