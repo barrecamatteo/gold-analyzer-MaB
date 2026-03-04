@@ -11,7 +11,7 @@ from gold_data_fetcher import (
 )
 from gold_cot_data import get_gold_cot_analysis
 from gold_claude import run_claude_analysis
-from gold_ui import display_scores_table, display_claude_analysis, display_calendar_sidebar
+from gold_ui import display_scores_table, display_claude_analysis, display_calendar_sidebar, display_data_input_section
 
 try:
     from zoneinfo import ZoneInfo
@@ -232,39 +232,28 @@ def main():
             st.session_state.news_data_ts = get_italy_now().isoformat()
             st.rerun()
 
-    # Show loaded data
-    if st.session_state.fred_data:
-        with st.expander("Dati FRED", expanded=False):
-            for sid, d in st.session_state.fred_data.items():
-                if d.get("error"):
-                    st.warning(f"{sid}: {d['error']}")
-                else:
-                    st.markdown(f"**{sid}**: {d['latest_value']:.4f} (al {d['latest_date']})")
+    # Calcola punteggi parziali per mostrare dettaglio indicatori
+    preview_scores = None
+    if st.session_state.fred_data and st.session_state.yahoo_data:
+        preview_scores = calculate_all_scores(
+            fred_data=st.session_state.fred_data,
+            yahoo_data=st.session_state.yahoo_data,
+            gld_data=st.session_state.gld_data or {},
+            fed_data=st.session_state.fed_data or {},
+            cot_data=st.session_state.cot_data,
+            cb_data=st.session_state.get("cb_data"),
+            news_score=0
+        )
 
-    if st.session_state.yahoo_data:
-        with st.expander("Dati Yahoo Finance", expanded=False):
-            for tk, d in st.session_state.yahoo_data.items():
-                if d.get("error"):
-                    st.warning(f"{tk}: {d['error']}")
-                else:
-                    st.markdown(f"**{tk}**: {d['latest_value']:.2f} (al {d['latest_date']})")
-
-    if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
-        with st.expander("GLD Holdings", expanded=False):
-            g = st.session_state.gld_data
-            st.markdown(f"**Tonnellate**: {g['latest_tonnes']:.2f}t (al {g['latest_date']})")
-
-    if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
-        with st.expander("Fed History", expanded=False):
-            f = st.session_state.fed_data
-            st.markdown(f"**Tasso**: {f['current_rate']} | **Trend**: {f['trend_emoji']} {f['trend_label']}")
-            for m in f.get("meetings", []):
-                st.markdown(f"- {m['date_formatted']}: {m['change']}")
-
-    if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
-        with st.expander("COT Data", expanded=False):
-            c = st.session_state.cot_data
-            st.markdown(f"**COT Index**: {c['cot_index']:.1f}% | **Net**: {c['net_long']:,} | **Mom**: {c['momentum_score']:+d}")
+    # Mostra dettaglio indicatori con tabelle
+    display_data_input_section(
+        fred_data=st.session_state.fred_data or {},
+        yahoo_data=st.session_state.yahoo_data or {},
+        gld_data=st.session_state.gld_data or {},
+        fed_data=st.session_state.fed_data or {},
+        cot_data=st.session_state.cot_data,
+        scores=preview_scores or {}
+    )
 
     # CLAUDE ANALYSIS
     st.markdown("---")
