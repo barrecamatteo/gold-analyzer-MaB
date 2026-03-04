@@ -8,7 +8,10 @@ from gold_data_fetcher import (
     fetch_fed_history, calculate_all_scores, _bias_label
 )
 from gold_cot_data import get_all_cot_analysis
-from gold_ui import display_scores_table, display_calendar_sidebar, display_data_input_section
+from gold_ui import (
+    display_indicator_cards, display_scores_table,
+    display_calendar_sidebar, display_past_analysis
+)
 
 try:
     from zoneinfo import ZoneInfo
@@ -30,7 +33,7 @@ def get_sb():
         st.error(f"Supabase error: {e}")
         return None
 
-def save_analysis(user_id, scores, gold_price):
+def save_analysis(user_id, scores, gold_price, raw_data):
     sb = get_sb()
     if not sb:
         return False
@@ -41,7 +44,8 @@ def save_analysis(user_id, scores, gold_price):
             "gold_price": gold_price,
             "total_score": scores.get("TOTAL", {}).get("total_score", 0),
             "bias": scores.get("TOTAL", {}).get("bias", "N/A"),
-            "scores_json": json.dumps({k: v for k, v in scores.items() if k != "TOTAL"}),
+            "scores_json": json.dumps(scores, default=str),
+            "claude_response": json.dumps(raw_data, default=str),
             "created_at": get_italy_now().isoformat(),
         }).execute()
         return True
@@ -75,31 +79,53 @@ def auth_user(username, password):
         pass
     return None
 
-# === FRESHNESS ===
+# === DATA SOURCES CONFIG ===
+DATA_SOURCES = {
+    "fred_data": {"label": "FRED (Tassi, Inflazione)", "icon": "\U0001F4C8", "freshness_h": 24},
+    "yahoo_data": {"label": "Yahoo (DXY, VIX, Gold)", "icon": "\U0001F4B9", "freshness_h": 12},
+    "gld_data": {"label": "GLD Holdings (SPDR)", "icon": "\U0001F947", "freshness_h": 24},
+    "fed_data": {"label": "Fed (FOMC History)", "icon": "\U0001F3DB\uFE0F", "freshness_h": 168},
+    "cot_data": {"label": "COT (CFTC Gold + USD)", "icon": "\U0001F4CB", "freshness_h": 168},
+}
+
 def check_freshness(data_key, last_updated):
     if last_updated is None:
-        return {"is_fresh": False, "status": chr(0x1F534), "message": "Mai aggiornato"}
+        return {"is_fresh": False, "status": "\U0001F534", "message": "Mai aggiornato", "ago": ""}
     now = get_italy_now()
     if isinstance(last_updated, str):
         try:
             last_updated = datetime.fromisoformat(last_updated)
         except:
-            return {"is_fresh": False, "status": chr(0x1F534), "message": "Data non valida"}
+            return {"is_fresh": False, "status": "\U0001F534", "message": "Data non valida", "ago": ""}
     if last_updated.tzinfo is None and ITALY_TZ:
         last_updated = last_updated.replace(tzinfo=ITALY_TZ)
     age_h = (now - last_updated).total_seconds() / 3600
-    thresh = {"fred_data": 24, "yahoo_data": 12, "gld_data": 24, "fed_data": 168, "cot_data": 168}
-    mx = thresh.get(data_key, 24)
+    mx = DATA_SOURCES.get(data_key, {}).get("freshness_h", 24)
+    date_str = last_updated.strftime("%d/%m %H:%M")
     if age_h < mx:
-        return {"is_fresh": True, "status": chr(0x1F7E2), "message": f"Aggiornato {int(age_h)}h fa"}
-    return {"is_fresh": False, "status": chr(0x1F7E0), "message": f"Da aggiornare ({int(age_h)}h fa)"}
+        return {"is_fresh": True, "status": "\U0001F7E2", "message": f"{date_str}", "ago": f"{int(age_h)}h fa"}
+    return {"is_fresh": False, "status": "\U0001F7E0", "message": f"{date_str}", "ago": f"{int(age_h)}h fa"}
+
+def fetch_source(key):
+    """Fetch a single data source by key."""
+    if key == "fred_data":
+        return fetch_all_fred_data(st.secrets["fred"]["api_key"])
+    elif key == "yahoo_data":
+        return fetch_all_yahoo_data()
+    elif key == "gld_data":
+        return fetch_gld_holdings()
+    elif key == "fed_data":
+        return fetch_fed_history()
+    elif key == "cot_data":
+        return get_all_cot_analysis()
+    return None
 
 # === MAIN ===
 def main():
-    st.set_page_config(page_title="Gold XAU/USD Macro Analyzer", page_icon=chr(0x1F947),
+    st.set_page_config(page_title="Gold XAU/USD Macro Analyzer", page_icon="\U0001F947",
                        layout="wide", initial_sidebar_state="expanded")
     st.markdown("""<style>
-    .stMetricValue {font-size:1.5rem!important}
+    .stMetricValue {font-size:1.3rem!important}
     .main .block-container {padding-top:1rem;max-width:1200px}
     </style>""", unsafe_allow_html=True)
 
@@ -107,10 +133,14 @@ def main():
         st.session_state.authenticated = False
     if "user_id" not in st.session_state:
         st.session_state.user_id = None
+    if "analysis_done" not in st.session_state:
+        st.session_state.analysis_done = False
+    if "analysis_scores" not in st.session_state:
+        st.session_state.analysis_scores = None
 
     # LOGIN
     if not st.session_state.authenticated:
-        st.title(chr(0x1F947) + " Gold XAU/USD Macro Analyzer")
+        st.title("\U0001F947 Gold XAU/USD Macro Analyzer")
         st.markdown("*Analisi macro settimanale con scoring automatico*")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -128,7 +158,7 @@ def main():
         return
 
     # MAIN APP
-    st.title(chr(0x1F947) + " Gold XAU/USD Macro Analyzer")
+    st.title("\U0001F947 Gold XAU/USD Macro Analyzer")
     st.caption(f"User: {st.session_state.get('username','?')} | {get_italy_now().strftime('%d/%m/%Y %H:%M')}")
 
     # Sidebar
@@ -138,87 +168,80 @@ def main():
         st.session_state.authenticated = False
         st.rerun()
 
+    # Se selezionata analisi passata, mostrala
     if sel_hist:
-        st.markdown(f"### Analisi del {sel_hist['analysis_date']}")
-        st.markdown(f"**Score: {sel_hist['total_score']:+d} | {sel_hist['bias']}**")
-        if sel_hist.get("scores_json"):
-            try:
-                old_scores = json.loads(sel_hist["scores_json"])
-                old_scores["TOTAL"] = {"total_score": sel_hist["total_score"], "bias": sel_hist["bias"]}
-                display_scores_table(old_scores)
-            except:
-                pass
+        display_past_analysis(sel_hist)
         st.markdown("---")
+        if st.button("\u2B05\uFE0F Torna all'analisi corrente"):
+            st.rerun()
+        return
 
-    # DATA INPUT
-    data_keys = ["fred_data", "yahoo_data", "gld_data", "fed_data", "cot_data"]
-    for dk in data_keys:
+    # Init session state per ogni data source
+    for dk in DATA_SOURCES:
         if dk not in st.session_state:
             st.session_state[dk] = None
         if f"{dk}_ts" not in st.session_state:
             st.session_state[f"{dk}_ts"] = None
 
-    # Update all button
-    if st.button(chr(0x1F504) + " Aggiorna TUTTO", type="primary"):
-        with st.spinner("Aggiornamento dati..."):
-            try:
-                st.session_state.fred_data = fetch_all_fred_data(st.secrets["fred"]["api_key"])
-                st.session_state.fred_data_ts = get_italy_now().isoformat()
-            except Exception as e:
-                st.error(f"FRED: {e}")
-            st.session_state.yahoo_data = fetch_all_yahoo_data()
-            st.session_state.yahoo_data_ts = get_italy_now().isoformat()
-            st.session_state.gld_data = fetch_gld_holdings()
-            st.session_state.gld_data_ts = get_italy_now().isoformat()
-            st.session_state.fed_data = fetch_fed_history()
-            st.session_state.fed_data_ts = get_italy_now().isoformat()
-            st.session_state.cot_data = get_all_cot_analysis()
-            st.session_state.cot_data_ts = get_italy_now().isoformat()
-            st.success("Dati aggiornati!")
+    # === SEZIONE DATA SOURCES CON BOTTONI ===
+    st.markdown("## \U0001F4E5 Fonti Dati")
+
+    # Aggiorna TUTTO
+    if st.button("\U0001F504 Aggiorna TUTTO", type="primary"):
+        with st.spinner("Aggiornamento completo..."):
+            for dk in DATA_SOURCES:
+                try:
+                    st.session_state[dk] = fetch_source(dk)
+                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
+                except Exception as e:
+                    st.error(f"{DATA_SOURCES[dk]['label']}: {e}")
+            st.session_state.analysis_done = False
+            st.session_state.analysis_scores = None
             st.rerun()
 
-    # Status
-    st.markdown("### Stato Dati")
-    labels = {"fred_data": "FRED", "yahoo_data": "Yahoo", "gld_data": "GLD",
-              "fed_data": "Fed", "cot_data": "COT"}
-    scols = st.columns(5)
-    for i, (dk, lb) in enumerate(labels.items()):
+    st.markdown("")
+
+    # Riga per ogni data source con bottone + stato
+    for dk, cfg in DATA_SOURCES.items():
         f = check_freshness(dk, st.session_state.get(f"{dk}_ts"))
-        scols[i].markdown(f"{f['status']} **{lb}**")
-        scols[i].caption(f["message"])
+        c1, c2, c3, c4 = st.columns([0.5, 3, 2, 1.5])
+        c1.markdown(f"### {cfg['icon']}")
+        c2.markdown(f"**{cfg['label']}**")
+        if f["ago"]:
+            c3.markdown(f"{f['status']} {f['message']} ({f['ago']})")
+        else:
+            c3.markdown(f"{f['status']} Mai aggiornato")
+        if c4.button("\U0001F504 Aggiorna", key=f"btn_{dk}"):
+            with st.spinner(f"{cfg['label']}..."):
+                try:
+                    st.session_state[dk] = fetch_source(dk)
+                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
+                    st.session_state.analysis_done = False
+                    st.session_state.analysis_scores = None
+                except Exception as e:
+                    st.error(f"{cfg['label']}: {e}")
+                st.rerun()
 
-    # Single update buttons
-    st.markdown("#### Aggiorna singolarmente:")
-    bc = st.columns(5)
-    if bc[0].button("FRED"):
-        with st.spinner("FRED..."):
-            st.session_state.fred_data = fetch_all_fred_data(st.secrets["fred"]["api_key"])
-            st.session_state.fred_data_ts = get_italy_now().isoformat()
-            st.rerun()
-    if bc[1].button("Yahoo"):
-        with st.spinner("Yahoo..."):
-            st.session_state.yahoo_data = fetch_all_yahoo_data()
-            st.session_state.yahoo_data_ts = get_italy_now().isoformat()
-            st.rerun()
-    if bc[2].button("GLD"):
-        with st.spinner("GLD..."):
-            st.session_state.gld_data = fetch_gld_holdings()
-            st.session_state.gld_data_ts = get_italy_now().isoformat()
-            st.rerun()
-    if bc[3].button("Fed"):
-        with st.spinner("Fed..."):
-            st.session_state.fed_data = fetch_fed_history()
-            st.session_state.fed_data_ts = get_italy_now().isoformat()
-            st.rerun()
-    if bc[4].button("COT"):
-        with st.spinner("COT..."):
-            st.session_state.cot_data = get_all_cot_analysis()
-            st.session_state.cot_data_ts = get_italy_now().isoformat()
-            st.rerun()
+    # === SCHEDE INDICATORI (SEMPRE APERTE) ===
+    st.markdown("---")
+    st.markdown("## \U0001F4CA Indicatori")
+    display_indicator_cards(
+        fred_data=st.session_state.fred_data or {},
+        yahoo_data=st.session_state.yahoo_data or {},
+        gld_data=st.session_state.gld_data or {},
+        fed_data=st.session_state.fed_data or {},
+        cot_data=st.session_state.cot_data,
+    )
 
-    # Calcola punteggi e mostra dettaglio indicatori
-    scores = None
-    if st.session_state.fred_data and st.session_state.yahoo_data:
+    # === AVVIA ANALISI ===
+    st.markdown("---")
+    required = ["fred_data", "yahoo_data"]
+    missing = [DATA_SOURCES[k]["label"] for k in required if not st.session_state.get(k)]
+
+    if missing:
+        st.warning(f"Dati mancanti per l'analisi: {', '.join(missing)}")
+
+    if st.button("\U0001F680 Avvia Analisi", type="primary", disabled=bool(missing)):
         scores = calculate_all_scores(
             fred_data=st.session_state.fred_data,
             yahoo_data=st.session_state.yahoo_data,
@@ -226,29 +249,77 @@ def main():
             fed_data=st.session_state.fed_data or {},
             cot_data=st.session_state.cot_data,
         )
+        st.session_state.analysis_scores = scores
+        st.session_state.analysis_done = True
+        st.rerun()
 
-    # Mostra dettaglio indicatori con tabelle
-    display_data_input_section(
-        fred_data=st.session_state.fred_data or {},
-        yahoo_data=st.session_state.yahoo_data or {},
-        gld_data=st.session_state.gld_data or {},
-        fed_data=st.session_state.fed_data or {},
-        cot_data=st.session_state.cot_data,
-        scores=scores or {}
-    )
-
-    # TABELLA RIEPILOGO FINALE
-    if scores:
+    # === RISULTATI ===
+    if st.session_state.analysis_done and st.session_state.analysis_scores:
+        scores = st.session_state.analysis_scores
         st.markdown("---")
+        st.markdown("## \U0001F3AF Risultati Analisi")
         display_scores_table(scores)
+
         gold_price = scores.get("GOLD_PRICE", {}).get("value_raw", 0)
-        if st.button(chr(0x1F4BE) + " Salva Analisi", type="primary"):
-            if save_analysis(st.session_state.user_id, scores, gold_price):
+
+        # Prepara raw data per salvataggio
+        raw_data = {
+            "fred_data_summary": {},
+            "yahoo_data_summary": {},
+            "gld_data_summary": {},
+            "fed_data_summary": {},
+            "cot_data_summary": {},
+            "timestamps": {},
+        }
+        # Fred
+        if st.session_state.fred_data:
+            for sid, d in st.session_state.fred_data.items():
+                if not d.get("error"):
+                    raw_data["fred_data_summary"][sid] = {
+                        "value": d.get("latest_value"),
+                        "date": d.get("latest_date"),
+                    }
+        # Yahoo
+        if st.session_state.yahoo_data:
+            for tk, d in st.session_state.yahoo_data.items():
+                if not d.get("error"):
+                    raw_data["yahoo_data_summary"][tk] = {
+                        "value": d.get("latest_value"),
+                        "date": d.get("latest_date"),
+                    }
+        # GLD
+        if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
+            raw_data["gld_data_summary"] = {
+                "tonnes": st.session_state.gld_data.get("latest_tonnes"),
+                "date": st.session_state.gld_data.get("latest_date"),
+            }
+        # Fed
+        if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
+            raw_data["fed_data_summary"] = {
+                "rate": st.session_state.fed_data.get("current_rate"),
+                "trend": st.session_state.fed_data.get("trend_label"),
+                "meetings": st.session_state.fed_data.get("meetings", [])[:5],
+            }
+        # COT
+        if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
+            for asset_key in ["GOLD", "USD"]:
+                d = st.session_state.cot_data.get(asset_key, {})
+                if d and not d.get("error"):
+                    raw_data["cot_data_summary"][asset_key] = {
+                        "net_long": d.get("net_long"),
+                        "cot_index": d.get("cot_index"),
+                        "delta_1w": d.get("delta_1w"),
+                        "ma_4w": d.get("ma_4w"),
+                        "interpretation": d.get("interpretation"),
+                    }
+        # Timestamps
+        for dk in DATA_SOURCES:
+            raw_data["timestamps"][dk] = st.session_state.get(f"{dk}_ts", "N/A")
+
+        if st.button("\U0001F4BE Salva Analisi", type="primary"):
+            if save_analysis(st.session_state.user_id, scores, gold_price, raw_data):
                 st.success("Analisi salvata!")
                 st.rerun()
-    else:
-        st.markdown("---")
-        st.info("Clicca \"Aggiorna TUTTO\" per caricare i dati e generare il riepilogo automatico.")
 
 if __name__ == "__main__":
     main()
