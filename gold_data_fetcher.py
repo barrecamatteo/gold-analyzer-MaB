@@ -38,7 +38,7 @@ SCORING_THRESHOLDS = {
     "T10YIE": {"level":[(2.0,-1),(2.5,0),(999,1)],"mom_thresh":0.10},
     "GLD": {"mom_thresh":10.0},
     "FED_SPREAD": {"level":[(-0.25,-1),(0.50,0),(999,1)],"mom_thresh":0.15},
-    "VIX": {"level":[(15,-1),(25,0),(999,1)],"mom_thresh":5.0},
+    "VIX": {"level":[(15,-1),(20,0),(999,1)],"mom_thresh":5.0},
 }
 
 def fetch_fred_series(series_id, api_key, limit=100):
