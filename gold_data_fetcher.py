@@ -298,15 +298,17 @@ def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
     else: scores["GLD"] = _empty("GLD Holdings (SPDR Gold)",gld_data.get("error"),1)
 
     # 5. COT
-    if cot_data and not cot_data.get("error"):
-        ci, cm = cot_data.get("cot_index",50), cot_data.get("momentum_score",0)
+    # Gestisci sia formato vecchio (flat) che nuovo (GOLD/USD)
+    _cot = cot_data.get("GOLD", cot_data) if cot_data else {}
+    if _cot and not _cot.get("error"):
+        ci, cm = _cot.get("cot_index",50), _cot.get("momentum_score",0)
         ps = 1 if ci>75 else (-1 if ci<25 else 0)
         warn = " ⚠️ Eccesso" if ci>90 else (" ⚠️ Molto basso" if ci<10 else "")
         scores["COT"] = _make_score("COT Oro Non-Commercial",f"Index: {ci:.0f}%",ci,
-            cot_data.get("latest_date"),f"Net: {cot_data.get('net_long',0):+,.0f}",
-            cot_data.get("net_long",0),ps,cm,2,"CFTC",
+            _cot.get("latest_date"),f"Net: {_cot.get('net_long',0):+,.0f}",
+            _cot.get("net_long",0),ps,cm,2,"CFTC",
             f"{'Bullish' if ps>0 else 'Bearish' if ps<0 else 'Neutro'} ({ps:+d}), mom {'↑' if cm>0 else '↓' if cm<0 else '→'} ({cm:+d}){warn}")
-    else: scores["COT"] = _empty("COT Oro Non-Commercial",cot_data.get("error") if cot_data else "Non caricato",2)
+    else: scores["COT"] = _empty("COT Oro Non-Commercial",_cot.get("error") if _cot else "Non caricato",2)
 
     # 6. Banche Centrali
     if cb_data and not cb_data.get("error"):
