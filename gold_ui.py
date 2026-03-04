@@ -354,22 +354,10 @@ def display_data_input_section(fred_data, yahoo_data, gld_data, fed_data, cot_da
         _show_indicator_card("VIX", INDICATOR_INFO["VIX"], scores.get("VIX", {}),
             hist_values=yahoo_data["VIX"]["values"], value_label="VIX", fmt=".2f")
 
-    # 7. COT
+    # 7. COT (tabella stile forex con Gold + USD)
     if cot_data and not cot_data.get("error"):
         def cot_extra():
-            st.markdown("**Dettaglio posizionamento:**")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("COT Index", f"{cot_data.get('cot_index', 0):.1f}%",
-                      help="0% = minimo 52 sett., 100% = massimo 52 sett.")
-            c2.metric("Net Long attuale", f"{cot_data.get('net_long', 0):,}",
-                      help="Contratti long - short dei non-commercial")
-            c3.metric("Media 4 sett.", f"{cot_data.get('ma_4w', 0):,.0f}")
-            c4.metric("Delta vs MA", f"{cot_data.get('delta_vs_ma', 0):+,.0f}")
-            st.markdown(f"**Range 52 sett.:** Min {cot_data.get('min_52w', 0):,} — Max {cot_data.get('max_52w', 0):,}")
-            if cot_data.get("cot_index", 50) < 5:
-                st.warning("⚠️ COT Index molto basso: posizionamento al minimo storico 52 settimane. Possibile segnale contrarian bullish.")
-            elif cot_data.get("cot_index", 50) > 95:
-                st.warning("⚠️ COT Index molto alto: posizionamento al massimo storico. Possibile segnale contrarian bearish.")
+            _display_cot_table(cot_data)
 
         _show_indicator_card("COT", INDICATOR_INFO["COT"], scores.get("COT", {}),
             extra_content=cot_extra)
