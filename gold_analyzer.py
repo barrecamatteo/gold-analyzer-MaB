@@ -9,7 +9,7 @@ from gold_data_fetcher import (
     fetch_fed_history, fetch_gold_news, format_news_for_claude,
     calculate_all_scores, _bias_label
 )
-from gold_cot_data import get_gold_cot_analysis
+from gold_cot_data import get_all_cot_analysis
 from gold_claude import run_claude_analysis
 from gold_ui import display_scores_table, display_claude_analysis, display_calendar_sidebar, display_data_input_section
 
@@ -179,7 +179,7 @@ def main():
             st.session_state.gld_data_ts = get_italy_now().isoformat()
             st.session_state.fed_data = fetch_fed_history()
             st.session_state.fed_data_ts = get_italy_now().isoformat()
-            st.session_state.cot_data = get_gold_cot_analysis()
+            st.session_state.cot_data = get_all_cot_analysis()
             st.session_state.cot_data_ts = get_italy_now().isoformat()
             st.session_state.news_data = fetch_gold_news()
             st.session_state.news_data_ts = get_italy_now().isoformat()
@@ -221,7 +221,7 @@ def main():
             st.rerun()
     if bc[4].button("COT"):
         with st.spinner("COT..."):
-            st.session_state.cot_data = get_gold_cot_analysis()
+            st.session_state.cot_data = get_all_cot_analysis()
             st.session_state.cot_data_ts = get_italy_now().isoformat()
             st.rerun()
     if bc[5].button("BC"):
