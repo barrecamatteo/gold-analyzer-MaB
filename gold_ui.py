@@ -110,20 +110,7 @@ def display_indicator_cards(fred_data, yahoo_data, gld_data, fed_data, cot_data)
         st.caption("\U0001F534 Dati non disponibili")
     st.markdown("---")
 
-    # 2. DXY
-    _card_header("DXY")
-    if yahoo_data.get("DXY") and not yahoo_data["DXY"].get("error"):
-        d = yahoo_data["DXY"]
-        c1, c2 = st.columns(2)
-        c1.metric("Valore attuale", f"{d['latest_value']:.2f}", help="US Dollar Index")
-        c2.metric("Data", d["latest_date"])
-        if d.get("values") and len(d["values"]) >= 2:
-            _show_mini_history(d["values"], "DXY", ".2f")
-    else:
-        st.caption("\U0001F534 Dati non disponibili")
-    st.markdown("---")
-
-    # 3. T10YIE
+    # 2. T10YIE
     _card_header("T10YIE")
     if fred_data.get("T10YIE") and not fred_data["T10YIE"].get("error"):
         d = fred_data["T10YIE"]
@@ -132,6 +119,19 @@ def display_indicator_cards(fred_data, yahoo_data, gld_data, fed_data, cot_data)
         c2.metric("Data", d["latest_date"])
         if d.get("values") and len(d["values"]) >= 2:
             _show_mini_history(d["values"], "Breakeven %", ".4f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 3. DXY
+    _card_header("DXY")
+    if yahoo_data.get("DXY") and not yahoo_data["DXY"].get("error"):
+        d = yahoo_data["DXY"]
+        c1, c2 = st.columns(2)
+        c1.metric("Valore attuale", f"{d['latest_value']:.2f}", help="US Dollar Index")
+        c2.metric("Data", d["latest_date"])
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "DXY", ".2f")
     else:
         st.caption("\U0001F534 Dati non disponibili")
     st.markdown("---")
@@ -352,7 +352,7 @@ def display_scores_table(scores):
     if gp.get("value"):
         st.metric("\U0001F4B0 Prezzo XAU/USD", gp["value"])
 
-    keys = ["DFII10", "DXY", "T10YIE", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
+    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
     rows = []
     for key in keys:
         s = scores.get(key, {})
@@ -432,7 +432,7 @@ def display_past_analysis(hist):
     try:
         scores = json.loads(hist.get("scores_json", "{}"))
         if scores:
-            keys = ["DFII10", "DXY", "T10YIE", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
+            keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
             rows = []
             for key in keys:
                 s = scores.get(key, {})
