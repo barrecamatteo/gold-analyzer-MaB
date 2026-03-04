@@ -172,6 +172,115 @@ def _show_indicator_card(key, info, score_data, hist_values=None, extra_content=
             _make_history_table(hist_values, n_weeks=n_weeks, value_label=value_label, fmt=fmt)
 
 
+
+
+def _net_emoji(val):
+    return chr(0x1F7E2) if val > 0 else (chr(0x1F534) if val < 0 else chr(0x26AA))
+
+def _index_emoji(val):
+    if val >= 75: return chr(0x1F535)  # blue = very long
+    if val >= 50: return chr(0x1F7E2)  # green
+    if val >= 25: return chr(0x26AA)   # white
+    return chr(0x1F534)                # red = very short
+
+def _score_emoji(val):
+    if val > 0: return chr(0x1F7E2)
+    if val < 0: return chr(0x1F534)
+    return chr(0x26AA)
+
+def _display_cot_table(cot_data):
+    """Mostra tabella COT stile forex analyzer con Gold e USD."""
+    import pandas as pd
+
+    st.markdown("**COT Non-Commercial (Speculatori)**")
+
+    assets = []
+    for key in ["GOLD", "USD"]:
+        d = cot_data.get(key, {})
+        if not d or d.get("error"):
+            continue
+        assets.append({
+            "key": key,
+            "name": "Oro" if key == "GOLD" else "USD Index",
+            "icon": chr(0x1F947) if key == "GOLD" else chr(0x1F4B5),
+            "data": d,
+        })
+
+    if not assets:
+        # Fallback: cot_data is the gold-only format (backward compat)
+        if cot_data.get("cot_index") is not None:
+            assets.append({
+                "key": "GOLD", "name": "Oro", "icon": chr(0x1F947), "data": cot_data
+            })
+
+    if not assets:
+        st.warning("Dati COT non disponibili")
+        return
+
+    # Build table rows
+    rows = []
+    for a in assets:
+        d = a["data"]
+        net = d.get("net_long", 0)
+        ci = d.get("cot_index", 50)
+        d1w = d.get("delta_1w", 0)
+        ts = d.get("total_score", d.get("pos_score", 0) + d.get("momentum_score", 0))
+        interp = d.get("interpretation", "N/A")
+
+        rows.append({
+            "Asset": f"{a['icon']} {a['name']}",
+            "Net Position": f"{_net_emoji(net)} {net:+,}",
+            "COT Index": f"{_index_emoji(ci)} {ci:.0f}%",
+            "Delta Sett.": f"{_net_emoji(d1w)} {d1w:+,}",
+            "Score": f"{_score_emoji(ts)} {ts:+d}",
+            "Interpretazione": interp,
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Date report
+    report_date = cot_data.get("latest_date") or ""
+    if not report_date:
+        for key in ["GOLD", "USD"]:
+            d = cot_data.get(key, {})
+            if d.get("latest_date"):
+                report_date = d["latest_date"]
+                break
+    if report_date:
+        st.caption(f"Dati report: {report_date}")
+
+    # Dettaglio per ogni asset
+    for a in assets:
+        d = a["data"]
+        with st.expander(f"Dettaglio {a['name']}", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Net Long", f"{d.get('net_long', 0):+,}")
+            c2.metric("Media 4 sett.", f"{d.get('ma_4w', 0):,.0f}")
+            c3.metric("Delta vs MA", f"{d.get('delta_vs_ma', 0):+,.0f}")
+            ci = d.get("cot_index", 50)
+            c4.metric("COT Index", f"{ci:.1f}%")
+            st.markdown(f"**Range 52 sett.:** Min {d.get('min_52w', 0):,} | Max {d.get('max_52w', 0):,}")
+            if ci < 5:
+                st.warning("Posizionamento al minimo storico 52 sett. Possibile segnale contrarian bullish.")
+            elif ci > 95:
+                st.warning("Posizionamento al massimo storico. Possibile segnale contrarian bearish.")
+
+    # Nota correlazione
+    gold_d = cot_data.get("GOLD", {})
+    usd_d = cot_data.get("USD", {})
+    if gold_d and usd_d and not gold_d.get("error") and not usd_d.get("error"):
+        gold_mom = gold_d.get("momentum_score", 0)
+        usd_mom = usd_d.get("momentum_score", 0)
+        if gold_mom > 0 and usd_mom < 0:
+            st.success("Convergenza: speculatori comprano oro e vendono dollaro. Segnale coerente BULLISH oro.")
+        elif gold_mom < 0 and usd_mom > 0:
+            st.error("Convergenza: speculatori vendono oro e comprano dollaro. Segnale coerente BEARISH oro.")
+        elif gold_mom > 0 and usd_mom > 0:
+            st.info("Divergenza: speculatori comprano sia oro che dollaro. Segnale ambiguo, possibile flight to safety.")
+        elif gold_mom < 0 and usd_mom < 0:
+            st.info("Divergenza: speculatori vendono sia oro che dollaro. Risk-on su altri asset.")
+
 # ============================================================================
 # MAIN DISPLAY FUNCTIONS
 # ============================================================================
