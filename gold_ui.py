@@ -68,7 +68,7 @@ INDICATOR_INFO = {
         "description": "Indice di volatilita implicita dell\u2019S&P 500, noto come \u201Cindice della paura\u201D. "
             "VIX alto = risk-off = investitori cercano rifugio nell\u2019oro (BULLISH). "
             "VIX basso = risk-on = meno interesse per l\u2019oro come safe haven (BEARISH).",
-        "scoring": "Livello: <15 = -1 | 15-25 = 0 | >25 = +1 | "
+        "scoring": "Livello: <15 = -1 | 15-20 = 0 | >20 = +1 | "
             "Momentum (1 sett.): spike >+5pt = +1 | stabile = 0 | calo >5pt = -1",
         "max_score": "+/-2",
         "source": "Yahoo Finance (^VIX)",
