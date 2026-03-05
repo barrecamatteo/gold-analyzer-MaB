@@ -483,14 +483,7 @@ def display_calendar_sidebar(history):
                 has_analysis = date_str in analysis_map
 
                 if has_analysis:
-                    score = analysis_map[date_str].get("total_score", 0)
-                    if score > 3:
-                        color = "#22c55e"  # green
-                    elif score < -3:
-                        color = "#ef4444"  # red
-                    else:
-                        color = "#eab308"  # yellow
-                    html += f'<td style="padding:4px;"><span style="color:{color};font-weight:bold;">{d}</span></td>'
+                    html += f'<td style="padding:4px;"><span style="color:#22c55e;font-weight:bold;">{d}</span></td>'
                 elif is_today:
                     html += f'<td style="padding:4px;"><span style="background:#3b82f6;color:white;border-radius:50%;padding:2px 6px;font-weight:bold;">{d}</span></td>'
                 else:
@@ -524,91 +517,75 @@ def display_calendar_sidebar(history):
 # ============================================================================
 
 def display_past_analysis(hist):
-    """Mostra analisi passata con punteggi + dati grezzi."""
+    """Mostra analisi passata con stessa UI dell'analisi corrente."""
     date = hist.get("analysis_date", "N/A")
-    score = hist.get("total_score", 0)
-    bias = hist.get("bias", "N/A")
     gold_price = hist.get("gold_price", 0)
 
-    st.markdown(f"## \U0001F4C5 Analisi del {date}")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Score", f"{score:+d}")
-    c2.metric("Bias", bias)
-    c3.metric("Gold Price", f"${gold_price:,.2f}" if gold_price else "N/A")
+    st.markdown(f"## 📅 Analisi del {date}")
+    if gold_price:
+        st.metric("💰 Prezzo XAU/USD", f"${gold_price:,.2f}")
 
-    # Tabella punteggi
-    st.markdown("### \U0001F3AF Punteggi")
+    # Ricostruisci scores nello stesso formato di calculate_all_scores
     try:
         scores = json.loads(hist.get("scores_json", "{}"))
-        if scores:
-            keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
-            rows = []
-            for key in keys:
-                s = scores.get(key, {})
-                if "total_score" not in s:
-                    continue
-                sv = s.get("total_score", 0)
-                emoji = "\U0001F7E2" if sv > 0 else ("\U0001F534" if sv < 0 else "\u26AA")
-                rows.append({
-                    "Indicatore": s.get("name", key),
-                    "Valore": str(s.get("value", "N/A")),
-                    "Score": f"{emoji} {sv:+d}",
-                    "Commento": s.get("comment", ""),
-                })
-            if rows:
-                df = pd.DataFrame(rows)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+        scores["TOTAL"] = {
+            "total_score": hist.get("total_score", 0),
+            "bias": hist.get("bias", "N/A"),
+        }
+        if gold_price:
+            scores["GOLD_PRICE"] = {"value": f"${gold_price:,.2f}", "value_raw": gold_price}
+        # Usa la stessa tabella dell'analisi corrente
+        display_scores_table(scores)
     except:
-        pass
+        st.warning("Impossibile caricare i punteggi per questa analisi")
 
-    # Dati grezzi
-    st.markdown("### \U0001F4E5 Dati Grezzi")
+    # Dati grezzi sotto
+    st.markdown("---")
+    st.markdown("### 📥 Dati Grezzi del giorno")
     try:
         raw = json.loads(hist.get("claude_response", "{}"))
         if raw:
+            cols = st.columns(2)
             # FRED
             fred = raw.get("fred_data_summary", {})
             if fred:
-                st.markdown("**FRED:**")
-                for sid, d in fred.items():
-                    st.markdown(f"- **{sid}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
+                with cols[0]:
+                    st.markdown("**📈 FRED**")
+                    for sid, d in fred.items():
+                        st.markdown(f"- **{sid}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
 
             # Yahoo
             yahoo = raw.get("yahoo_data_summary", {})
             if yahoo:
-                st.markdown("**Yahoo Finance:**")
-                for tk, d in yahoo.items():
-                    st.markdown(f"- **{tk}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
+                with cols[1]:
+                    st.markdown("**💹 Yahoo Finance**")
+                    for tk, d in yahoo.items():
+                        st.markdown(f"- **{tk}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
 
+            cols2 = st.columns(2)
             # GLD
             gld = raw.get("gld_data_summary", {})
             if gld and gld.get("tonnes"):
-                st.markdown(f"**GLD Holdings:** {gld['tonnes']}t (al {gld.get('date', 'N/A')})")
+                with cols2[0]:
+                    st.markdown(f"**🥇 GLD Holdings:** {gld['tonnes']}t (al {gld.get('date', 'N/A')})")
 
             # Fed
             fed = raw.get("fed_data_summary", {})
             if fed:
-                st.markdown(f"**Fed:** Tasso {fed.get('rate', 'N/A')} | Trend: {fed.get('trend', 'N/A')}")
-                for m in fed.get("meetings", []):
-                    st.markdown(f"- {m.get('date_formatted', 'N/A')}: {m.get('change', 'N/A')}")
+                with cols2[1]:
+                    st.markdown(f"**🏛️ Fed:** Tasso {fed.get('rate', 'N/A')} | Trend: {fed.get('trend', 'N/A')}")
 
             # COT
             cot = raw.get("cot_data_summary", {})
             if cot:
-                st.markdown("**COT:**")
-                for asset, d in cot.items():
-                    st.markdown(f"- **{asset}**: Net {d.get('net_long', 0):+,} | Index {d.get('cot_index', 0):.0f}% | {d.get('interpretation', 'N/A')}")
-
-            # Timestamps
-            ts = raw.get("timestamps", {})
-            if ts:
-                st.markdown("**Orari aggiornamento:**")
-                for k, v in ts.items():
-                    st.caption(f"{k}: {v}")
+                st.markdown("**📋 COT:**")
+                cot_cols = st.columns(len(cot))
+                for i, (asset, d) in enumerate(cot.items()):
+                    with cot_cols[i]:
+                        st.markdown(f"**{asset}**: Net {d.get('net_long', 0):+,} | Index {d.get('cot_index', 0):.0f}% | {d.get('interpretation', 'N/A')}")
         else:
             st.info("Dati grezzi non disponibili per questa analisi")
     except:
         st.info("Dati grezzi non disponibili per questa analisi")
-
 
 import json
