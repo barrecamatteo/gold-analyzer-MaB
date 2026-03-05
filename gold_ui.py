@@ -383,26 +383,25 @@ def display_scores_table(scores):
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Totale + Bias con colore
+    # Totale + Bias
     total = scores.get("TOTAL", {})
     ts = total.get("total_score", 0)
     bias = total.get("bias", "N/A")
-    bias_color = "yellow"
     if ts >= 10:
-        bias_color = "green"
+        bias_dot = "\U0001F7E2"
     elif ts >= 4:
-        bias_color = "green"
+        bias_dot = "\U0001F7E2"
     elif ts >= -3:
-        bias_color = "yellow"
+        bias_dot = "\U0001F7E1"
     elif ts >= -9:
-        bias_color = "red"
+        bias_dot = "\U0001F534"
     else:
-        bias_color = "red"
+        bias_dot = "\U0001F534"
 
     c1, c2, c3 = st.columns(3)
     c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
-    c2.markdown(f"**BIAS**")
-    c2.markdown(f'<h3 style="color:{bias_color};margin:0">{bias}</h3>', unsafe_allow_html=True)
+    c2.markdown("**BIAS**")
+    c2.markdown(f"### {bias_dot} {bias}")
     # Barra visuale
     pct = max(0.01, min(0.99, (ts + 18) / 36))
     c3.markdown("**Forza segnale**")
