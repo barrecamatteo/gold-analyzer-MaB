@@ -4,7 +4,7 @@ import json
 import hashlib
 
 from gold_data_fetcher import (
-    fetch_all_fred_data, fetch_all_yahoo_data, fetch_gld_holdings,
+    fetch_all_fred_data, fetch_all_yahoo_data,
     fetch_fed_history, calculate_all_scores, _bias_label
 )
 from gold_cot_data import get_all_cot_analysis
@@ -84,7 +84,6 @@ def auth_user(username, password):
 DATA_SOURCES = {
     "fred_data": {"label": "FRED (Tassi, Inflazione)", "icon": "\U0001F4C8", "freshness_h": 24},
     "yahoo_data": {"label": "Yahoo (DXY, VIX, Gold)", "icon": "\U0001F4B9", "freshness_h": 12},
-    "gld_data": {"label": "GLD Holdings (SPDR)", "icon": "\U0001F947", "freshness_h": 24},
     "fed_data": {"label": "Fed (FOMC History)", "icon": "\U0001F3DB\uFE0F", "freshness_h": 168},
     "cot_data": {"label": "COT (CFTC Gold + USD)", "icon": "\U0001F4CB", "freshness_h": 168},
 }
@@ -112,8 +111,6 @@ def fetch_source(key):
         return fetch_all_fred_data(st.secrets["fred"]["api_key"])
     elif key == "yahoo_data":
         return fetch_all_yahoo_data()
-    elif key == "gld_data":
-        return fetch_gld_holdings()
     elif key == "fed_data":
         return fetch_fed_history()
     elif key == "cot_data":
@@ -122,7 +119,7 @@ def fetch_source(key):
 
 def _build_raw_data_for_save():
     """Costruisce il blob di dati grezzi completo per il salvataggio, incluse serie storiche."""
-    raw = {"fred": {}, "yahoo": {}, "gld": {}, "fed": {}, "cot": {}, "timestamps": {}}
+    raw = {"fred": {}, "yahoo": {}, "fed": {}, "cot": {}, "timestamps": {}}
 
     # FRED - salva anche serie storiche (ultimi 10 punti)
     if st.session_state.fred_data:
@@ -143,15 +140,6 @@ def _build_raw_data_for_save():
                     "latest_date": d.get("latest_date"),
                     "values": d.get("values", [])[:10],
                 }
-
-    # GLD - serie storica
-    if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
-        raw["gld"] = {
-            "latest_tonnes": st.session_state.gld_data.get("latest_tonnes"),
-            "latest_date": st.session_state.gld_data.get("latest_date"),
-            "values": st.session_state.gld_data.get("values", [])[:10],
-            "source": st.session_state.gld_data.get("source", ""),
-        }
 
     # Fed - meetings completi
     if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
@@ -332,7 +320,6 @@ def main():
     display_indicator_cards(
         fred_data=st.session_state.fred_data or {},
         yahoo_data=st.session_state.yahoo_data or {},
-        gld_data=st.session_state.gld_data or {},
         fed_data=st.session_state.fed_data or {},
         cot_data=st.session_state.cot_data,
     )
@@ -349,7 +336,6 @@ def main():
         scores = calculate_all_scores(
             fred_data=st.session_state.fred_data,
             yahoo_data=st.session_state.yahoo_data,
-            gld_data=st.session_state.gld_data or {},
             fed_data=st.session_state.fed_data or {},
             cot_data=st.session_state.cot_data,
         )
