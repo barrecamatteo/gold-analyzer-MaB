@@ -400,9 +400,10 @@ def display_scores_table(scores):
 
     c1, c2, c3 = st.columns(3)
     c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
-    c2.metric("BIAS", f"{bias_emoji} {bias}")
+    c2.markdown(f"**BIAS**")
+    c2.markdown(f"### {bias_emoji} {bias}")
     # Barra visuale
-    pct = max(0.01, min(0.99, (ts + 16) / 32))
+    pct = max(0.01, min(0.99, (ts + 18) / 36))
     c3.markdown("**Forza segnale**")
     c3.progress(pct)
 
