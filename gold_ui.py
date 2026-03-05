@@ -43,14 +43,6 @@ INDICATOR_INFO = {
         "scoring": "Spread: >+0.50% = +1 (tagli) | -0.25/+0.50% = 0 | <-0.25% = -1 (rialzi) \u2014 Momentum 4w: spread in aumento >0.15% = +1 | stabile = 0 | in calo = -1",
         "max": "\u00B12",
     },
-    "GLD": {
-        "title": "GLD Holdings (SPDR Gold Shares)",
-        "icon": "\U0001F947",
-        "what": "La quantit\u00E0 di oro fisico (in tonnellate) custodita nei caveau dell\u2019ETF SPDR Gold Shares (ticker GLD), il pi\u00F9 grande ETF sull\u2019oro al mondo con oltre 800 tonnellate. Quando gli investitori istituzionali comprano quote GLD, il fondo deve acquistare oro fisico \u2014 gli afflussi indicano domanda istituzionale crescente, i deflussi il contrario.",
-        "why": "Afflussi = domanda istituzionale in crescita (BULLISH). Deflussi = domanda in calo (BEARISH). Conta solo il momentum.",
-        "scoring": "Solo momentum: variazione >+10t in 4 sett. = +1 | stabile = 0 | <-10t = -1",
-        "max": "\u00B11",
-    },
     "VIX": {
         "title": "VIX (CBOE Volatility Index)",
         "icon": "\u26A1",
@@ -98,7 +90,7 @@ INDICATOR_INFO = {
 # INDICATOR CARDS (sempre aperte, solo dati, no punteggio)
 # ============================================================================
 
-def display_indicator_cards(fred_data, yahoo_data, gld_data, fed_data, cot_data):
+def display_indicator_cards(fred_data, yahoo_data, fed_data, cot_data):
     """Mostra tutte le schede indicatori sempre aperte, con descrizione e valore."""
 
     if not fred_data and not yahoo_data:
@@ -166,18 +158,6 @@ def display_indicator_cards(fred_data, yahoo_data, gld_data, fed_data, cot_data)
                 _show_mini_history(spread_hist, "Spread %", ".4f")
         else:
             st.caption("\U0001F534 Dati non disponibili")
-    else:
-        st.caption("\U0001F534 Dati non disponibili")
-    st.markdown("---")
-
-    # 5. GLD Holdings
-    _card_header("GLD")
-    if gld_data and not gld_data.get("error"):
-        c1, c2 = st.columns(2)
-        c1.metric("Tonnellate attuali", f"{gld_data.get('latest_tonnes', 0):.2f}t")
-        c2.metric("Data", gld_data.get("latest_date", "N/A"))
-        if gld_data.get("values") and len(gld_data["values"]) >= 2:
-            _show_mini_history(gld_data["values"], "Tonnellate", ".2f")
     else:
         st.caption("\U0001F534 Dati non disponibili")
     st.markdown("---")
@@ -360,7 +340,7 @@ def display_scores_table(scores):
     if gp.get("value"):
         st.metric("💰 Prezzo XAU/USD", gp["value"])
 
-    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "COT_USD", "FED_TREND", "SEASONALITY"]
+    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "VIX", "COT", "COT_USD", "FED_TREND", "SEASONALITY"]
     rows = []
     for key in keys:
         s = scores.get(key, {})
@@ -403,7 +383,7 @@ def display_scores_table(scores):
     c2.markdown("**BIAS**")
     c2.markdown(f"### {bias_dot} {bias}")
     # Barra visuale
-    pct = max(0.01, min(0.99, (ts + 18) / 36))
+    pct = max(0.01, min(0.99, (ts + 17) / 34))
     c3.markdown("**Forza segnale**")
     c3.progress(pct)
 
@@ -411,11 +391,11 @@ def display_scores_table(scores):
     st.markdown("---")
     st.markdown(
         "**Legenda:** "
-        "🟢🟢 = FORTE BULLISH (+10 a +18) | "
+        "🟢🟢 = FORTE BULLISH (+10 a +17) | "
         "🟢 = MODERATO BULLISH (+4 a +9) | "
         "🟡 = NEUTRO (-3 a +3) | "
         "🔴 = MODERATO BEARISH (-9 a -4) | "
-        "🔴🔴 = FORTE BEARISH (-18 a -10)"
+        "🔴🔴 = FORTE BEARISH (-17 a -10)"
     )
 
 
@@ -468,7 +448,7 @@ def display_score_history_chart(history):
 
     fig.update_layout(
         height=400, margin=dict(l=40, r=40, t=20, b=40),
-        yaxis=dict(title="Punteggio", range=[-18, 18], dtick=3, gridcolor="rgba(0,0,0,0.1)"),
+        yaxis=dict(title="Punteggio", range=[-17, 17], dtick=3, gridcolor="rgba(0,0,0,0.1)"),
         xaxis=dict(title="", gridcolor="rgba(0,0,0,0.1)"),
         plot_bgcolor="white", hovermode="x unified",
     )
@@ -626,7 +606,6 @@ def display_past_analysis(hist):
     # Supporta sia formato nuovo (fred/yahoo/gld/fed/cot) che vecchio (fred_data_summary etc)
     fred = raw.get("fred", raw.get("fred_data_summary", {}))
     yahoo = raw.get("yahoo", raw.get("yahoo_data_summary", {}))
-    gld = raw.get("gld", raw.get("gld_data_summary", {}))
     fed = raw.get("fed", raw.get("fed_data_summary", {}))
     cot = raw.get("cot", raw.get("cot_data_summary", {}))
 
@@ -691,17 +670,6 @@ def display_past_analysis(hist):
                     spread_hist.append({"date": v["date"], "value": round(dff_dict[v["date"]] - v["value"], 4)})
             if len(spread_hist) >= 2:
                 _show_mini_history(spread_hist, "Spread %", ".4f")
-        st.markdown("---")
-
-    # GLD
-    if gld and (gld.get("latest_tonnes") or gld.get("tonnes")):
-        info = INDICATOR_INFO.get("GLD", {})
-        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'GLD')}")
-        c1, c2 = st.columns(2)
-        c1.metric("Tonnellate", f"{gld.get('latest_tonnes', gld.get('tonnes', 'N/A'))}t")
-        c2.metric("Data", gld.get("latest_date", gld.get("date", "N/A")))
-        if gld.get("values") and len(gld["values"]) >= 2:
-            _show_mini_history(gld["values"], "Tonnellate", ".2f")
         st.markdown("---")
 
     # VIX
