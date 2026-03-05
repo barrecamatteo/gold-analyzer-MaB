@@ -10,7 +10,8 @@ from gold_data_fetcher import (
 from gold_cot_data import get_all_cot_analysis
 from gold_ui import (
     display_indicator_cards, display_scores_table,
-    display_calendar_sidebar, display_past_analysis
+    display_calendar_sidebar, display_past_analysis,
+    display_score_history_chart
 )
 
 try:
@@ -366,6 +367,7 @@ def main():
         st.markdown("---")
         st.markdown("## \U0001F3AF Risultati Analisi")
         display_scores_table(scores)
+        display_score_history_chart(history)
 
 if __name__ == "__main__":
     main()
