@@ -101,34 +101,70 @@ def fetch_all_yahoo_data():
     return results
 
 def fetch_gld_holdings():
+    """
+    Fetch GLD tonnage data.
+    Tries SPDR CSV first, falls back to Yahoo Finance estimation.
+    """
+    # Method 1: SPDR CSV ufficiale
     headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
-        r = requests.get(GLD_CSV_URL, headers=headers, timeout=30)
-        if r.status_code != 200:
-            return {"error":f"HTTP {r.status_code}"}
-        lines = r.text.strip().split("\n")
-        values = []
-        for line in lines[1:]:
-            try:
-                parts = line.split(",")
-                if len(parts) < 10: continue
-                date_str = parts[0].strip()
-                tonnes_str = parts[9].strip() if len(parts)>9 else parts[-2].strip()
-                if not tonnes_str or tonnes_str=="-": continue
-                tonnes = float(tonnes_str)
-                try: dt = datetime.strptime(date_str, "%d-%b-%Y")
-                except ValueError:
-                    try: dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    except: continue
-                values.append({"date":dt.strftime("%Y-%m-%d"),"value":tonnes})
-            except: continue
-        if not values:
-            return {"error":"No valid tonnage data"}
-        values.sort(key=lambda x: x["date"], reverse=True)
-        return {"latest_tonnes":values[0]["value"],"latest_date":values[0]["date"],
-                "values":values[:120],"error":None}
-    except Exception as e:
-        return {"error":str(e)[:100]}
+        r = requests.get(GLD_CSV_URL, headers=headers, timeout=20)
+        if r.status_code == 200:
+            lines = r.text.strip().split("\n")
+            values = []
+            for line in lines[1:]:
+                try:
+                    parts = line.split(",")
+                    if len(parts) < 10: continue
+                    date_str = parts[0].strip()
+                    tonnes_str = parts[9].strip() if len(parts)>9 else parts[-2].strip()
+                    if not tonnes_str or tonnes_str=="-": continue
+                    tonnes = float(tonnes_str)
+                    try: dt = datetime.strptime(date_str, "%d-%b-%Y")
+                    except ValueError:
+                        try: dt = datetime.strptime(date_str, "%Y-%m-%d")
+                        except: continue
+                    values.append({"date":dt.strftime("%Y-%m-%d"),"value":tonnes})
+                except: continue
+            if values:
+                values.sort(key=lambda x: x["date"], reverse=True)
+                return {"latest_tonnes":values[0]["value"],"latest_date":values[0]["date"],
+                        "values":values[:120],"error":None,"source":"SPDR CSV"}
+    except:
+        pass
+
+    # Method 2: Yahoo Finance fallback
+    # GLD share = ~0.09272 troy oz, 1 tonne = 32150.7 troy oz
+    try:
+        import yfinance as yf
+        gld = yf.Ticker("GLD")
+        info = gld.info
+        shares = info.get("sharesOutstanding")
+        if shares:
+            OZ_PER_SHARE = 0.09272
+            OZ_TO_TONNES = 32150.7
+            tonnes_est = (shares * OZ_PER_SHARE) / OZ_TO_TONNES
+            # Get historical for momentum
+            hist = gld.history(period="6mo", interval="1wk")
+            values = []
+            if len(hist) > 0:
+                # Use price as proxy for relative changes (normalize to current tonnes)
+                prices = list(zip(hist.index, hist["Close"]))
+                current_price = prices[-1][1]
+                for dt, price in reversed(prices):
+                    ratio = price / current_price if current_price > 0 else 1
+                    est_tonnes = tonnes_est * ratio
+                    values.append({"date": dt.strftime("%Y-%m-%d"), "value": round(est_tonnes, 2)})
+            if not values:
+                values = [{"date": datetime.now().strftime("%Y-%m-%d"), "value": round(tonnes_est, 2)}]
+            return {"latest_tonnes": round(tonnes_est, 2),
+                    "latest_date": values[0]["date"] if values else datetime.now().strftime("%Y-%m-%d"),
+                    "values": values[:60], "error": None, "source": "Yahoo Finance (stima)"}
+    except:
+        pass
+
+    return {"error": "Impossibile recuperare dati GLD (SPDR e Yahoo falliti)"}
+
 
 def fetch_fed_history():
     headers = {"User-Agent":"Mozilla/5.0","Accept":"application/json","Referer":"https://www.investing.com/"}
