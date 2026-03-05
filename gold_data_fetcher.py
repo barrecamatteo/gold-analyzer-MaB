@@ -255,11 +255,11 @@ def _empty(name, error, max_score):
                        f"⚠️ {error}" if error else "⚠️ Non disponibile")
 
 def _bias_label(total):
-    if total >= 10: return "🟢🟢 Forte bias RIALZISTA"
-    if total >= 4: return "🟢 Moderatamente RIALZISTA"
-    if total >= -3: return "⚪ NEUTRO / Range"
-    if total >= -9: return "🔴 Moderatamente RIBASSISTA"
-    return "🔴🔴 Forte bias RIBASSISTA"
+    if total >= 10: return "FORTE BULLISH"
+    if total >= 4: return "MODERATO BULLISH"
+    if total >= -3: return "NEUTRO"
+    if total >= -9: return "MODERATO BEARISH"
+    return "FORTE BEARISH"
 
 def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
                           cot_data=None, cb_data=None):
