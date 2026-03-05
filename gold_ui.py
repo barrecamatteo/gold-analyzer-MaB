@@ -383,20 +383,21 @@ def display_scores_table(scores):
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Totale + Bias con emoji
+    # Totale + Bias con colore
     total = scores.get("TOTAL", {})
     ts = total.get("total_score", 0)
     bias = total.get("bias", "N/A")
-    if ts >= 9:
-        bias_emoji = "🟢🟢"
+    bias_color = "yellow"
+    if ts >= 10:
+        bias_color = "green"
     elif ts >= 4:
-        bias_emoji = "🟢"
+        bias_color = "green"
     elif ts >= -3:
-        bias_emoji = "🟡"
-    elif ts >= -8:
-        bias_emoji = "🔴"
+        bias_color = "yellow"
+    elif ts >= -9:
+        bias_color = "red"
     else:
-        bias_emoji = "🔴🔴"
+        bias_color = "red"
 
     c1, c2, c3 = st.columns(3)
     c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
