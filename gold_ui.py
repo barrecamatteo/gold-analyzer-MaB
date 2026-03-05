@@ -401,7 +401,7 @@ def display_scores_table(scores):
     c1, c2, c3 = st.columns(3)
     c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
     c2.markdown(f"**BIAS**")
-    c2.markdown(f"### {bias_emoji} {bias}")
+    c2.markdown(f'<h3 style="color:{bias_color};margin:0">{bias}</h3>', unsafe_allow_html=True)
     # Barra visuale
     pct = max(0.01, min(0.99, (ts + 18) / 36))
     c3.markdown("**Forza segnale**")
@@ -411,11 +411,11 @@ def display_scores_table(scores):
     st.markdown("---")
     st.markdown(
         "**Legenda:** "
-        "🟢🟢 = Forte BULLISH (+10 a +18) | "
-        "🟢 = Moderato BULLISH (+4 a +9) | "
-        "🟡 = Neutro / Range (-3 a +3) | "
-        "🔴 = Moderato BEARISH (-9 a -4) | "
-        "🔴🔴 = Forte BEARISH (-18 a -10)"
+        "🟢🟢 = FORTE BULLISH (+10 a +18) | "
+        "🟢 = MODERATO BULLISH (+4 a +9) | "
+        "🟡 = NEUTRO (-3 a +3) | "
+        "🔴 = MODERATO BEARISH (-9 a -4) | "
+        "🔴🔴 = FORTE BEARISH (-18 a -10)"
     )
 
 
