@@ -415,7 +415,7 @@ def display_scores_table(scores):
 # ============================================================================
 
 def display_calendar_sidebar(history):
-    """Calendario nella sidebar stile forex con widget calendario."""
+    """Calendario sidebar stile forex con HTML."""
     import calendar as cal_module
     from datetime import date as date_type
 
@@ -425,14 +425,13 @@ def display_calendar_sidebar(history):
         st.sidebar.info("Nessuna analisi salvata")
         return None
 
-    # Mappa date analisi salvate -> score
+    # Mappa date analisi -> score
     analysis_map = {}
     for h in history:
         d = h.get("analysis_date", "")
         if d:
             analysis_map[d] = h
 
-    # Navigazione mese
     today = date_type.today()
     if "cal_year" not in st.session_state:
         st.session_state.cal_year = today.year
@@ -445,7 +444,7 @@ def display_calendar_sidebar(history):
     month_names = {1:"Gen",2:"Feb",3:"Mar",4:"Apr",5:"Mag",6:"Giu",
                    7:"Lug",8:"Ago",9:"Set",10:"Ott",11:"Nov",12:"Dic"}
 
-    # Bottoni navigazione
+    # Navigazione
     nav1, nav2, nav3 = st.sidebar.columns([1, 3, 1])
     if nav1.button("◀", key="cal_prev"):
         if month == 1:
@@ -454,7 +453,7 @@ def display_calendar_sidebar(history):
         else:
             st.session_state.cal_month = month - 1
         st.rerun()
-    nav2.markdown(f"**{month_names[month]} {year}**")
+    nav2.markdown(f"<p style='text-align:center;font-weight:bold;margin:0'>{month_names[month]} {year}</p>", unsafe_allow_html=True)
     if nav3.button("▶", key="cal_next"):
         if month == 12:
             st.session_state.cal_month = 1
@@ -463,47 +462,55 @@ def display_calendar_sidebar(history):
             st.session_state.cal_month = month + 1
         st.rerun()
 
-    # Calendario griglia
+    # Build HTML calendar
     c = cal_module.Calendar(firstweekday=0)
     weeks = c.monthdayscalendar(year, month)
 
-    # Header giorni
-    st.sidebar.markdown("**Lu Ma Me Gi Ve Sa Do**")
+    html = '<table style="width:100%;border-collapse:collapse;text-align:center;font-size:14px;">'
+    html += '<tr>'
+    for day_name in ["Lu","Ma","Me","Gi","Ve","Sa","Do"]:
+        html += f'<th style="padding:4px;color:#888;font-weight:600;font-size:12px;">{day_name}</th>'
+    html += '</tr>'
 
     for week in weeks:
-        day_strs = []
+        html += '<tr>'
         for d in week:
             if d == 0:
-                day_strs.append("  ")
+                html += '<td style="padding:4px;"></td>'
             else:
                 date_str = f"{year}-{month:02d}-{d:02d}"
-                if date_str in analysis_map:
+                is_today = (d == today.day and month == today.month and year == today.year)
+                has_analysis = date_str in analysis_map
+
+                if has_analysis:
                     score = analysis_map[date_str].get("total_score", 0)
                     if score > 3:
-                        day_strs.append(f"🟢")
+                        color = "#22c55e"  # green
                     elif score < -3:
-                        day_strs.append(f"🔴")
+                        color = "#ef4444"  # red
                     else:
-                        day_strs.append(f"🟡")
-                elif d == today.day and month == today.month and year == today.year:
-                    day_strs.append(f"🔵")
+                        color = "#eab308"  # yellow
+                    html += f'<td style="padding:4px;"><span style="color:{color};font-weight:bold;">{d}</span></td>'
+                elif is_today:
+                    html += f'<td style="padding:4px;"><span style="background:#3b82f6;color:white;border-radius:50%;padding:2px 6px;font-weight:bold;">{d}</span></td>'
                 else:
-                    day_strs.append(f"{d:2d}")
-        st.sidebar.text(" ".join(str(x).rjust(2) for x in day_strs))
+                    html += f'<td style="padding:4px;color:#555;">{d}</td>'
+        html += '</tr>'
+    html += '</table>'
 
+    st.sidebar.markdown(html, unsafe_allow_html=True)
     st.sidebar.caption("🟢 Analisi salvata | 🔵 Oggi")
 
     # Dropdown per selezionare analisi
     st.sidebar.markdown("---")
     st.sidebar.markdown("📅 **Carica analisi:**")
     dates_with_analysis = [h.get("analysis_date", "") for h in history if h.get("analysis_date")]
-    selected_date = st.sidebar.selectbox("-- Seleziona data --", ["-- Seleziona data --"] + dates_with_analysis, key="sel_date")
+    selected_date = st.sidebar.selectbox("Seleziona data", ["-- Seleziona data --"] + dates_with_analysis, key="sel_date", label_visibility="collapsed")
 
     selected = None
     if selected_date and selected_date != "-- Seleziona data --":
         selected = analysis_map.get(selected_date)
 
-    # Bottone vai a oggi
     if st.sidebar.button("📅 Vai a Oggi"):
         st.session_state.cal_year = today.year
         st.session_state.cal_month = today.month
