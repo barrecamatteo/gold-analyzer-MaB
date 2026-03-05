@@ -342,6 +342,128 @@ def _display_cot_table(cot_data):
 
 
 # ============================================================================
+# DISPLAY LAST ANALYSIS INDICATORS (da dati salvati)
+# ============================================================================
+
+def display_last_analysis_indicators(raw_data):
+    """Mostra gli indicatori dall'ultima analisi salvata (dati grezzi dal DB)."""
+
+    # FRED
+    fred = raw_data.get("fred_data_summary", {})
+    if fred:
+        for sid in ["DFII10", "T10YIE"]:
+            d = fred.get(sid)
+            if d:
+                info = INDICATOR_INFO.get(sid, {})
+                st.markdown(f"### {info.get('icon', '')} {info.get('title', sid)}")
+                st.markdown(f"**Cos’è:** {info.get('what', '')}")
+                st.markdown(f"**Perché conta:** {info.get('why', '')}")
+                c1, c2 = st.columns(2)
+                c1.metric("Valore", f"{d['value']}")
+                c2.metric("Data", d.get("date", "N/A"))
+                st.markdown("---")
+
+        # DXY from yahoo
+        yahoo = raw_data.get("yahoo_data_summary", {})
+        dxy = yahoo.get("DXY")
+        if dxy:
+            info = INDICATOR_INFO.get("DXY", {})
+            st.markdown(f"### {info.get('icon', '')} {info.get('title', 'DXY')}")
+            st.markdown(f"**Cos’è:** {info.get('what', '')}")
+            st.markdown(f"**Perché conta:** {info.get('why', '')}")
+            c1, c2 = st.columns(2)
+            c1.metric("Valore", f"{dxy['value']}")
+            c2.metric("Data", dxy.get("date", "N/A"))
+            st.markdown("---")
+
+        # Fed Spread
+        dff = fred.get("DFF")
+        dgs2 = fred.get("DGS2")
+        if dff and dgs2:
+            info = INDICATOR_INFO.get("FED_SPREAD", {})
+            st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Fed Spread')}")
+            st.markdown(f"**Cos’è:** {info.get('what', '')}")
+            st.markdown(f"**Perché conta:** {info.get('why', '')}")
+            spread = dff["value"] - dgs2["value"]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("FFR", f"{dff['value']}%")
+            c2.metric("Treasury 2Y", f"{dgs2['value']}%")
+            c3.metric("Spread", f"{spread:+.4f}%")
+            st.markdown("---")
+
+    # GLD
+    gld = raw_data.get("gld_data_summary", {})
+    if gld and gld.get("tonnes"):
+        info = INDICATOR_INFO.get("GLD", {})
+        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'GLD')}")
+        st.markdown(f"**Cos’è:** {info.get('what', '')}")
+        st.markdown(f"**Perché conta:** {info.get('why', '')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tonnellate", f"{gld['tonnes']}t")
+        c2.metric("Data", gld.get("date", "N/A"))
+        st.markdown("---")
+
+    # VIX
+    yahoo = raw_data.get("yahoo_data_summary", {})
+    vix = yahoo.get("VIX")
+    if vix:
+        info = INDICATOR_INFO.get("VIX", {})
+        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'VIX')}")
+        st.markdown(f"**Cos’è:** {info.get('what', '')}")
+        st.markdown(f"**Perché conta:** {info.get('why', '')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{vix['value']}")
+        c2.metric("Data", vix.get("date", "N/A"))
+        st.markdown("---")
+
+    # COT
+    cot = raw_data.get("cot_data_summary", {})
+    if cot:
+        info = INDICATOR_INFO.get("COT", {})
+        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'COT')}")
+        st.markdown(f"**Cos’è:** {info.get('what', '')}")
+        st.markdown(f"**Perché conta:** {info.get('why', '')}")
+        rows = []
+        for asset_key in ["GOLD", "USD"]:
+            d = cot.get(asset_key, {})
+            if d:
+                rows.append({
+                    "Asset": "🥇 Oro" if asset_key == "GOLD" else "💵 USD Index",
+                    "Net Position": f"{d.get('net_long', 0):+,}",
+                    "COT Index": f"{d.get('cot_index', 0):.0f}%",
+                    "Interpretazione": d.get("interpretation", "N/A"),
+                })
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        st.markdown("---")
+
+    # Fed Trend
+    fed = raw_data.get("fed_data_summary", {})
+    if fed:
+        info = INDICATOR_INFO.get("FED_TREND", {})
+        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Fed Trend')}")
+        st.markdown(f"**Cos’è:** {info.get('what', '')}")
+        st.markdown(f"**Perché conta:** {info.get('why', '')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tasso", fed.get("rate", "N/A"))
+        c2.metric("Trend", fed.get("trend", "N/A"))
+        for m in fed.get("meetings", []):
+            st.markdown(f"- **{m.get('date_formatted', 'N/A')}**: {m.get('change', 'N/A')}")
+        st.markdown("---")
+
+    # Stagionalita
+    info = INDICATOR_INFO.get("SEASONALITY", {})
+    st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Stagionalita')}")
+    st.markdown(f"**Cos’è:** {info.get('what', '')}")
+    st.markdown(f"**Perché conta:** {info.get('why', '')}")
+    from datetime import datetime as dt_mod
+    month_names = {1:"Gennaio",2:"Febbraio",3:"Marzo",4:"Aprile",5:"Maggio",6:"Giugno",
+                   7:"Luglio",8:"Agosto",9:"Settembre",10:"Ottobre",11:"Novembre",12:"Dicembre"}
+    st.markdown(f"**Mese corrente:** {month_names.get(dt_mod.now().month, '?')}")
+
+
+# ============================================================================
 # TABELLA RIEPILOGO PUNTEGGI
 # ============================================================================
 
