@@ -30,7 +30,7 @@ INDICATOR_INFO = {
     "T10YIE": {
         "title": "Breakeven Inflation 10Y (T10YIE)",
         "icon": "\U0001F4CA",
-        "what": "Aspettative di inflazione a 10 anni (differenza tra rendimenti nominali e reali).",
+        "what": "Le aspettative di inflazione a 10 anni prezzate dal mercato obbligazionario. Si calcola come differenza tra il rendimento nominale del Treasury 10Y e il tasso reale (DFII10). Se il T10YIE \u00E8 al 2.3%, il mercato si aspetta un\u2019inflazione media del 2.3% annuo per i prossimi 10 anni.",
         "why": "L\u2019oro \u00E8 un hedge contro l\u2019inflazione. Aspettative in salita = BULLISH, in calo = BEARISH.",
         "scoring": "Livello: <2.0% = -1 | 2.0-2.5% = 0 | >2.5% = +1 \u2014 Momentum 4w: salita >0.10% = +1 | stabile = 0 | calo >0.10% = -1",
         "max": "\u00B12",
