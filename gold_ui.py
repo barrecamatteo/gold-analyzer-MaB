@@ -14,7 +14,7 @@ INDICATOR_INFO = {
     "DFII10": {
         "title": "Tasso Reale 10Y (DFII10)",
         "icon": "\U0001F4C9",
-        "what": "Il tasso di interesse reale a 10 anni (TIPS). Misura il rendimento reale dei titoli di stato USA al netto dell\u2019inflazione attesa.",
+        "what": "Il rendimento reale dei Treasury USA a 10 anni, ricavato dai TIPS (Treasury Inflation-Protected Securities). A differenza del rendimento nominale, questo tasso esclude l\u2019inflazione attesa e rappresenta il guadagno \u2018vero\u2019 che un investitore ottiene in termini di potere d\u2019acquisto. Con un DFII10 all\u20191.8%, chi compra un bond USA guadagna l\u20191.8% reale all\u2019anno per 10 anni. \u00C8 il principale concorrente dell\u2019oro: pi\u00F9 \u00E8 alto, meno conviene detenere oro (che non paga cedole).",
         "why": "Tassi reali bassi o in calo sono BULLISH per l\u2019oro (basso costo opportunit\u00E0 nel detenere oro). Tassi reali alti o in salita sono BEARISH (conviene detenere bond).",
         "scoring": "Livello: <0.5% = +1 | 0.5-1.5% = 0 | >1.5% = -1 \u2014 Momentum 4w: calo >0.15% = +1 | stabile = 0 | salita >0.15% = -1",
         "max": "\u00B12",
@@ -22,7 +22,7 @@ INDICATOR_INFO = {
     "DXY": {
         "title": "DXY (US Dollar Index)",
         "icon": "\U0001F4B5",
-        "what": "Indice del dollaro USA ponderato contro 6 valute principali (EUR, JPY, GBP, CAD, SEK, CHF).",
+        "what": "Indice che misura la forza del dollaro USA rispetto a un paniere di 6 valute: Euro (57.6%), Yen (13.6%), Sterlina (11.9%), Dollaro canadese (9.1%), Corona svedese (4.2%) e Franco svizzero (3.6%). Siccome l\u2019oro \u00E8 quotato in dollari, un dollaro pi\u00F9 debole rende l\u2019oro pi\u00F9 economico per chi compra in altre valute, stimolando la domanda.",
         "why": "Correlazione inversa con l\u2019oro. Dollaro debole = oro forte. DXY sotto 98 \u00E8 fortemente bullish per l\u2019oro.",
         "scoring": "Livello: <98 = +2 | 98-101 = +1 | 101-105 = 0 | 105-107 = -1 | >107 = -2 \u2014 Momentum 4w: calo >1.5pt = +1 | stabile = 0 | salita >1.5pt = -1",
         "max": "\u00B13",
@@ -38,7 +38,7 @@ INDICATOR_INFO = {
     "FED_SPREAD": {
         "title": "Fed Expectations (Spread FFR - Treasury 2Y)",
         "icon": "\U0001F3E6",
-        "what": "Differenza tra il tasso Fed Funds effettivo (DFF) e il rendimento del Treasury 2Y (DGS2).",
+        "what": "Lo spread tra il tasso Fed Funds effettivo (il tasso a cui le banche si prestano denaro overnight, controllato dalla Fed) e il rendimento del Treasury a 2 anni (che riflette dove il mercato si aspetta che i tassi saranno nei prossimi 2 anni). Se il 2Y \u00E8 molto sotto il FFR, significa che il mercato prezza tagli dei tassi imminenti. Se \u00E8 sopra, prezza rialzi.",
         "why": "Se il 2Y \u00E8 molto sotto il FFR, il mercato prezza tagli (BULLISH oro). Se sopra, prezza rialzi (BEARISH).",
         "scoring": "Spread: >+0.50% = +1 (tagli) | -0.25/+0.50% = 0 | <-0.25% = -1 (rialzi) \u2014 Momentum 4w: spread in aumento >0.15% = +1 | stabile = 0 | in calo = -1",
         "max": "\u00B12",
@@ -46,7 +46,7 @@ INDICATOR_INFO = {
     "GLD": {
         "title": "GLD Holdings (SPDR Gold Shares)",
         "icon": "\U0001F947",
-        "what": "Tonnellate di oro fisico detenute dall\u2019ETF SPDR Gold Shares, il pi\u00F9 grande al mondo.",
+        "what": "La quantit\u00E0 di oro fisico (in tonnellate) custodita nei caveau dell\u2019ETF SPDR Gold Shares (ticker GLD), il pi\u00F9 grande ETF sull\u2019oro al mondo con oltre 800 tonnellate. Quando gli investitori istituzionali comprano quote GLD, il fondo deve acquistare oro fisico \u2014 gli afflussi indicano domanda istituzionale crescente, i deflussi il contrario.",
         "why": "Afflussi = domanda istituzionale in crescita (BULLISH). Deflussi = domanda in calo (BEARISH). Conta solo il momentum.",
         "scoring": "Solo momentum: variazione >+10t in 4 sett. = +1 | stabile = 0 | <-10t = -1",
         "max": "\u00B11",
@@ -54,7 +54,7 @@ INDICATOR_INFO = {
     "VIX": {
         "title": "VIX (CBOE Volatility Index)",
         "icon": "\u26A1",
-        "what": "Indice di volatilit\u00E0 implicita dell\u2019S&P 500, noto come \u201Cindice della paura\u201D.",
+        "what": "Indice calcolato dal CBOE che misura la volatilit\u00E0 attesa dell\u2019S&P 500 nei prossimi 30 giorni, ricavata dai prezzi delle opzioni. Noto come \u201Cindice della paura\u201D: valori bassi (<15) indicano mercati calmi e fiduciosi (risk-on), valori alti (>20) indicano nervosismo e incertezza (risk-off). Quando il VIX sale bruscamente, gli investitori cercano asset rifugio come l\u2019oro.",
         "why": "VIX alto = risk-off = investitori cercano rifugio nell\u2019oro (BULLISH). VIX basso = risk-on (BEARISH).",
         "scoring": "Livello: <15 = -1 | 15-20 = 0 | >20 = +1 \u2014 Momentum 1w: spike >+5pt = +1 | stabile = 0 | calo >5pt = -1",
         "max": "\u00B12",
@@ -62,15 +62,23 @@ INDICATOR_INFO = {
     "COT": {
         "title": "COT Non-Commercial (Speculative Positioning)",
         "icon": "\U0001F4CB",
-        "what": "Posizionamento netto dei trader speculativi sui futures oro e USD (CFTC, report settimanale).",
+        "what": "Dati dal Commitment of Traders Report, pubblicato ogni venerd\u00EC dalla CFTC (Commodity Futures Trading Commission). Mostra le posizioni nette (long meno short) dei trader \u201Cnon-commercial\u201D (hedge fund, speculatori) sui futures dell\u2019oro e del dollaro. Il COT Index (0-100%) indica dove si trova il posizionamento attuale rispetto al range delle ultime 52 settimane: 0% = minimo storico di posizioni long, 100% = massimo storico.",
         "why": "COT Index alto (>75%) = molto long, BULLISH ma attenzione a eccessi. Index basso (<25%) = BEARISH. Confronto Gold vs USD per coerenza.",
         "scoring": "Posizionamento: Index >75% = +1 | 25-75% = 0 | <25% = -1 \u2014 Momentum: net long sopra MA 4w = +1 | intorno = 0 | sotto = -1",
+        "max": "\u00B12",
+    },
+    "COT_USD": {
+        "title": "COT USD Index (Speculative Positioning)",
+        "icon": "\U0001F4B5",
+        "what": "Posizionamento netto degli speculatori sui futures dell\u2019USD Index (CFTC). Punteggio INVERTITO per l\u2019oro: se gli speculatori sono long dollaro (bullish USD), \u00E8 bearish per l\u2019oro e viceversa. Usato in combinazione con il COT Oro per verificare la coerenza dei segnali.",
+        "why": "Se gli speculatori vendono dollaro e comprano oro contemporaneamente, il segnale bullish oro \u00E8 pi\u00F9 affidabile. Se comprano entrambi, c\u2019\u00E8 divergenza.",
+        "scoring": "Invertito: USD Long >75% = -1 (bearish oro) | 25-75% = 0 | <25% = +1 (bullish oro) \u2014 Momentum invertito allo stesso modo",
         "max": "\u00B12",
     },
     "FED_TREND": {
         "title": "Fed Trend (Ciclo FOMC)",
         "icon": "\U0001F3DB\uFE0F",
-        "what": "Direzione della politica monetaria della Federal Reserve basata sulle ultime decisioni FOMC.",
+        "what": "La direzione del ciclo di politica monetaria della Federal Reserve, basata sulle decisioni pi\u00F9 recenti del FOMC (Federal Open Market Committee) che si riunisce circa ogni 6 settimane. Il ciclo pu\u00F2 essere di: easing (tagli dei tassi), tightening (rialzi dei tassi), pausa post-taglio (ha appena smesso di tagliare) o pausa post-rialzo (ha appena smesso di alzare).",
         "why": "Ciclo di taglio/easing = BULLISH (tassi pi\u00F9 bassi, costo opportunit\u00E0 basso). Ciclo di rialzo = BEARISH.",
         "scoring": "Easing/Pausa post-taglio = +1 | Holding = 0 | Tightening/Pausa post-rialzo = -1",
         "max": "\u00B11",
@@ -78,7 +86,7 @@ INDICATOR_INFO = {
     "SEASONALITY": {
         "title": "Stagionalit\u00E0 Oro",
         "icon": "\U0001F4C5",
-        "what": "Pattern stagionali storici dell\u2019oro. Mesi forti: Gen, Feb (Capodanno lunare), Set (Diwali), Dic. Mesi deboli: Mar-Giu.",
+        "what": "Pattern ricorrenti nella performance storica dell\u2019oro legati a fattori stagionali. Gennaio e Febbraio sono forti per la domanda fisica dal Capodanno lunare cinese e i matrimoni in India. Settembre \u00E8 storicamente il mese pi\u00F9 forte per l\u2019oro, trainato dalla stagione dei festival indiani (Diwali). Dicembre beneficia dei ribilanciamenti di portafoglio di fine anno. Marzo-Giugno tende ad essere il periodo pi\u00F9 debole.",
         "why": "La domanda fisica di oro ha pattern ricorrenti legati a festivit\u00E0 e ribilanciamenti di portafoglio.",
         "scoring": "Mese favorevole = +1 | Neutro = 0 | Sfavorevole = -1",
         "max": "\u00B11",
@@ -352,7 +360,7 @@ def display_scores_table(scores):
     if gp.get("value"):
         st.metric("💰 Prezzo XAU/USD", gp["value"])
 
-    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
+    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "COT_USD", "FED_TREND", "SEASONALITY"]
     rows = []
     for key in keys:
         s = scores.get(key, {})
@@ -402,11 +410,11 @@ def display_scores_table(scores):
     st.markdown("---")
     st.markdown(
         "**Legenda:** "
-        "🟢🟢 = Forte BULLISH (+9 a +16) | "
-        "🟢 = Moderato BULLISH (+4 a +8) | "
+        "🟢🟢 = Forte BULLISH (+10 a +18) | "
+        "🟢 = Moderato BULLISH (+4 a +9) | "
         "🟡 = Neutro / Range (-3 a +3) | "
-        "🔴 = Moderato BEARISH (-8 a -4) | "
-        "🔴🔴 = Forte BEARISH (-16 a -9)"
+        "🔴 = Moderato BEARISH (-9 a -4) | "
+        "🔴🔴 = Forte BEARISH (-18 a -10)"
     )
 
 
