@@ -14,7 +14,6 @@ FRED_SERIES = {
     "DGS2": "2-Year Treasury Constant Maturity Rate",
 }
 YAHOO_TICKERS = {"DXY": "DX-Y.NYB", "VIX": "^VIX", "GOLD": "GC=F"}
-GLD_CSV_URL = "https://www.spdrgoldshares.com/assets/dynamic/GLD/GLD_US_archive_EN.csv"
 FED_EVENT_ID = 168
 
 GOLD_SEASONALITY = {
@@ -99,69 +98,6 @@ def fetch_all_yahoo_data():
         results[key] = fetch_yahoo_finance(key)
         time.sleep(0.3)
     return results
-
-def fetch_gld_holdings():
-    """
-    Fetch GLD shares outstanding da Yahoo Finance per calcolare tonnellate.
-    Se non disponibile, ritorna neutro (score = 0).
-    """
-    headers = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    OZ_PER_SHARE = 0.09272
-    OZ_PER_TONNE = 32150.7
-
-    # Prova Yahoo v10 per shares outstanding
-    try:
-        url = "https://query1.finance.yahoo.com/v10/finance/quoteSummary/GLD"
-        params = {"modules": "defaultKeyStatistics"}
-        r = requests.get(url, params=params, headers=headers, timeout=15)
-        if r.status_code == 200:
-            data = r.json()
-            stats = data.get("quoteSummary",{}).get("result",[{}])[0].get("defaultKeyStatistics",{})
-            shares = stats.get("sharesOutstanding",{}).get("raw")
-            if shares and shares > 0:
-                tonnes = round((shares * OZ_PER_SHARE) / OZ_PER_TONNE, 2)
-
-                # Serie storica dal prezzo GLD (proxy per variazione tonnellate)
-                url2 = "https://query1.finance.yahoo.com/v8/finance/chart/GLD"
-                params2 = {"range":"6mo","interval":"1d","includePrePost":"false"}
-                r2 = requests.get(url2, params=params2, headers=headers, timeout=15)
-                values = []
-                if r2.status_code == 200:
-                    chart = r2.json().get("chart",{}).get("result",[])
-                    if chart:
-                        ts_list = chart[0].get("timestamp",[])
-                        closes = chart[0].get("indicators",{}).get("quote",[{}])[0].get("close",[])
-                        prices = []
-                        for t, c in zip(ts_list, closes):
-                            if c is not None:
-                                prices.append((datetime.fromtimestamp(t).strftime("%Y-%m-%d"), c))
-                        if prices:
-                            current_price = prices[-1][1]
-                            for dt_str, price in reversed(prices):
-                                ratio = price / current_price if current_price > 0 else 1
-                                values.append({"date": dt_str, "value": round(tonnes * ratio, 2)})
-
-                if not values:
-                    values = [{"date": datetime.now().strftime("%Y-%m-%d"), "value": tonnes}]
-
-                return {
-                    "latest_tonnes": tonnes,
-                    "latest_date": values[0]["date"],
-                    "values": values[:60],
-                    "error": None,
-                    "source": "Yahoo Finance (shares outstanding)",
-                }
-    except:
-        pass
-
-    # Fallback: dati non disponibili, score neutro
-    return {
-        "latest_tonnes": 0,
-        "latest_date": datetime.now().strftime("%Y-%m-%d"),
-        "values": [],
-        "error": "Dati non disponibili (score neutro)",
-        "source": "Non disponibile",
-    }
 
 def fetch_fed_history():
     headers = {"User-Agent":"Mozilla/5.0","Accept":"application/json","Referer":"https://www.investing.com/"}
@@ -258,8 +194,8 @@ def _bias_label(total):
     if total >= -9: return "MODERATO BEARISH"
     return "FORTE BEARISH"
 
-def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
-                          cot_data=None, cb_data=None):
+def calculate_all_scores(fred_data, yahoo_data, fed_data,
+                          cot_data=None):
     scores = {}
     now = datetime.now()
 
@@ -296,17 +232,6 @@ def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
             d.get("latest_date"),f"{cv-pv:+.2f}%" if pv else "N/A",cv-pv if pv else None,
             lv,mv,2,"FRED",f"Inflazione attesa {'alta' if lv>0 else 'neutra' if lv==0 else 'bassa'} ({lv:+d}), {'in salita' if mv>0 else 'in calo' if mv<0 else 'stabile'} ({mv:+d})")
     else: scores["T10YIE"] = _empty("Breakeven Inflation 10Y",d.get("error"),2)
-
-    # 4. GLD Holdings
-    if gld_data.get("latest_tonnes") is not None and not gld_data.get("error"):
-        cv = gld_data["latest_tonnes"]
-        pv = _get_past_value(gld_data.get("values",[]),4)
-        mv = _calc_momentum(cv,pv,SCORING_THRESHOLDS["GLD"]["mom_thresh"],invert=False) if pv else 0
-        delta = cv-pv if pv else None
-        cmt = f"{'Afflussi' if mv>0 else 'Deflussi' if mv<0 else 'Stabile'}: {delta:+.1f}t in 4 sett." if delta else "N/A"
-        scores["GLD"] = _make_score("GLD Holdings (SPDR Gold)",f"{cv:.2f}t",cv,
-            gld_data.get("latest_date"),f"{delta:+.1f}t" if delta else "N/A",delta,0,mv,1,"SPDR",cmt)
-    else: scores["GLD"] = _empty("GLD Holdings (SPDR Gold)",gld_data.get("error"),1)
 
     # 5. COT
     # Gestisci sia formato vecchio (flat) che nuovo (GOLD/USD)
