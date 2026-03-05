@@ -249,17 +249,6 @@ def main():
             fed_data=st.session_state.fed_data or {},
             cot_data=st.session_state.cot_data,
         )
-        st.session_state.analysis_scores = scores
-        st.session_state.analysis_done = True
-        st.rerun()
-
-    # === RISULTATI ===
-    if st.session_state.analysis_done and st.session_state.analysis_scores:
-        scores = st.session_state.analysis_scores
-        st.markdown("---")
-        st.markdown("## \U0001F3AF Risultati Analisi")
-        display_scores_table(scores)
-
         gold_price = scores.get("GOLD_PRICE", {}).get("value_raw", 0)
 
         # Prepara raw data per salvataggio
@@ -271,55 +260,54 @@ def main():
             "cot_data_summary": {},
             "timestamps": {},
         }
-        # Fred
         if st.session_state.fred_data:
             for sid, d in st.session_state.fred_data.items():
                 if not d.get("error"):
                     raw_data["fred_data_summary"][sid] = {
-                        "value": d.get("latest_value"),
-                        "date": d.get("latest_date"),
+                        "value": d.get("latest_value"), "date": d.get("latest_date"),
                     }
-        # Yahoo
         if st.session_state.yahoo_data:
             for tk, d in st.session_state.yahoo_data.items():
                 if not d.get("error"):
                     raw_data["yahoo_data_summary"][tk] = {
-                        "value": d.get("latest_value"),
-                        "date": d.get("latest_date"),
+                        "value": d.get("latest_value"), "date": d.get("latest_date"),
                     }
-        # GLD
         if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
             raw_data["gld_data_summary"] = {
                 "tonnes": st.session_state.gld_data.get("latest_tonnes"),
                 "date": st.session_state.gld_data.get("latest_date"),
             }
-        # Fed
         if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
             raw_data["fed_data_summary"] = {
                 "rate": st.session_state.fed_data.get("current_rate"),
                 "trend": st.session_state.fed_data.get("trend_label"),
                 "meetings": st.session_state.fed_data.get("meetings", [])[:5],
             }
-        # COT
         if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
             for asset_key in ["GOLD", "USD"]:
                 d = st.session_state.cot_data.get(asset_key, {})
                 if d and not d.get("error"):
                     raw_data["cot_data_summary"][asset_key] = {
-                        "net_long": d.get("net_long"),
-                        "cot_index": d.get("cot_index"),
-                        "delta_1w": d.get("delta_1w"),
-                        "ma_4w": d.get("ma_4w"),
+                        "net_long": d.get("net_long"), "cot_index": d.get("cot_index"),
+                        "delta_1w": d.get("delta_1w"), "ma_4w": d.get("ma_4w"),
                         "interpretation": d.get("interpretation"),
                     }
-        # Timestamps
         for dk in DATA_SOURCES:
             raw_data["timestamps"][dk] = st.session_state.get(f"{dk}_ts", "N/A")
 
-        if st.button("\U0001F4BE Salva Analisi", type="primary"):
-            if save_analysis(st.session_state.user_id, scores, gold_price, raw_data):
-                st.success("Analisi salvata!")
-                st.rerun()
+        # Salva automaticamente
+        save_analysis(st.session_state.user_id, scores, gold_price, raw_data)
+        st.session_state.analysis_scores = scores
+        st.session_state.analysis_done = True
+        st.rerun()
+
+    # === RISULTATI ===
+    if st.session_state.analysis_done and st.session_state.analysis_scores:
+        scores = st.session_state.analysis_scores
+        st.markdown("---")
+        st.markdown("## \U0001F3AF Risultati Analisi")
+        display_scores_table(scores)
+        st.success("Analisi salvata automaticamente!")
 
 if __name__ == "__main__":
     main()
