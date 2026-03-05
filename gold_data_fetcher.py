@@ -324,6 +324,20 @@ def calculate_all_scores(fred_data, yahoo_data, gld_data, fed_data,
             f"{'Bullish' if ps>0 else 'Bearish' if ps<0 else 'Neutro'} ({ps:+d}), mom {'↑' if cm>0 else '↓' if cm<0 else '→'} ({cm:+d}){warn}")
     else: scores["COT"] = _empty("COT Oro Non-Commercial",_cot.get("error") if _cot else "Non caricato",2)
 
+    # 5b. COT USD (invertito: USD long = bearish oro)
+    _cot_usd = cot_data.get("USD", {}) if cot_data else {}
+    if _cot_usd and not _cot_usd.get("error"):
+        ci_u, cm_u = _cot_usd.get("cot_index",50), _cot_usd.get("momentum_score",0)
+        ps_u = 1 if ci_u>75 else (-1 if ci_u<25 else 0)
+        # Inverti: USD bullish = oro bearish
+        ps_u_inv = -ps_u
+        cm_u_inv = -cm_u
+        scores["COT_USD"] = _make_score("COT USD Index",f"Index: {ci_u:.0f}%",ci_u,
+            _cot_usd.get("latest_date"),f"Net: {_cot_usd.get('net_long',0):+,.0f}",
+            _cot_usd.get("net_long",0),ps_u_inv,cm_u_inv,2,"CFTC",
+            f"USD {'Long' if ps_u>0 else 'Short' if ps_u<0 else 'Neutro'} ({ps_u_inv:+d} inv.), mom {'\u2191' if cm_u_inv>0 else '\u2193' if cm_u_inv<0 else '\u2192'} ({cm_u_inv:+d})")
+    else: scores["COT_USD"] = _empty("COT USD Index",_cot_usd.get("error") if _cot_usd else "Non caricato",2)
+
     # 6. Banche Centrali
     if cb_data and not cb_data.get("error"):
         scores["CB"] = _make_score("Banche Centrali (acquisti oro)",
