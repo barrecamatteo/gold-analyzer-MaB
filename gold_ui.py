@@ -346,11 +346,11 @@ def _display_cot_table(cot_data):
 # ============================================================================
 
 def display_scores_table(scores):
-    """Tabella riassuntiva punteggi finale."""
+    """Tabella riassuntiva punteggi finale con legenda."""
     # Gold price in evidenza
     gp = scores.get("GOLD_PRICE", {})
     if gp.get("value"):
-        st.metric("\U0001F4B0 Prezzo XAU/USD", gp["value"])
+        st.metric("💰 Prezzo XAU/USD", gp["value"])
 
     keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "FED_TREND", "SEASONALITY"]
     rows = []
@@ -359,7 +359,7 @@ def display_scores_table(scores):
         if "total_score" not in s:
             continue
         sv = s.get("total_score", 0)
-        emoji = "\U0001F7E2" if sv > 0 else ("\U0001F534" if sv < 0 else "\u26AA")
+        emoji = "🟢" if sv > 0 else ("🔴" if sv < 0 else "⚪")
         lv = s.get("level_score", 0)
         mv = s.get("momentum_score", 0)
         rows.append({
@@ -375,18 +375,39 @@ def display_scores_table(scores):
         df = pd.DataFrame(rows)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # Totale + Bias
+    # Totale + Bias con emoji
     total = scores.get("TOTAL", {})
     ts = total.get("total_score", 0)
     bias = total.get("bias", "N/A")
+    if ts >= 9:
+        bias_emoji = "🟢🟢"
+    elif ts >= 4:
+        bias_emoji = "🟢"
+    elif ts >= -3:
+        bias_emoji = "🟡"
+    elif ts >= -8:
+        bias_emoji = "🔴"
+    else:
+        bias_emoji = "🔴🔴"
+
     c1, c2, c3 = st.columns(3)
-    c1.metric("PUNTEGGIO TOTALE", f"{ts:+d} / \u00B116")
-    c2.metric("BIAS", bias)
+    c1.metric("PUNTEGGIO TOTALE", f"{ts:+d} / ±16")
+    c2.metric("BIAS", f"{bias_emoji} {bias}")
     # Barra visuale
-    pct = (ts + 16) / 32  # normalizza 0-1
-    color = "green" if ts > 3 else ("red" if ts < -3 else "gray")
-    c3.markdown(f"**Forza segnale**")
+    pct = max(0.01, min(0.99, (ts + 16) / 32))
+    c3.markdown("**Forza segnale**")
     c3.progress(pct)
+
+    # Legenda
+    st.markdown("---")
+    st.markdown(
+        "**Legenda:** "
+        "🟢🟢 = Forte BULLISH (+9 a +16) | "
+        "🟢 = Moderato BULLISH (+4 a +8) | "
+        "🟡 = Neutro / Range (-3 a +3) | "
+        "🔴 = Moderato BEARISH (-8 a -4) | "
+        "🔴🔴 = Forte BEARISH (-16 a -9)"
+    )
 
 
 # ============================================================================
@@ -394,19 +415,100 @@ def display_scores_table(scores):
 # ============================================================================
 
 def display_calendar_sidebar(history):
-    """Calendario nella sidebar con storico analisi."""
-    st.sidebar.markdown("### \U0001F4C5 Storico Analisi")
+    """Calendario nella sidebar stile forex con widget calendario."""
+    import calendar as cal_module
+    from datetime import date as date_type
+
+    st.sidebar.markdown("### 📁 Storico Analisi")
+
     if not history:
         st.sidebar.info("Nessuna analisi salvata")
         return None
+
+    # Mappa date analisi salvate -> score
+    analysis_map = {}
+    for h in history:
+        d = h.get("analysis_date", "")
+        if d:
+            analysis_map[d] = h
+
+    # Navigazione mese
+    today = date_type.today()
+    if "cal_year" not in st.session_state:
+        st.session_state.cal_year = today.year
+    if "cal_month" not in st.session_state:
+        st.session_state.cal_month = today.month
+
+    year = st.session_state.cal_year
+    month = st.session_state.cal_month
+
+    month_names = {1:"Gen",2:"Feb",3:"Mar",4:"Apr",5:"Mag",6:"Giu",
+                   7:"Lug",8:"Ago",9:"Set",10:"Ott",11:"Nov",12:"Dic"}
+
+    # Bottoni navigazione
+    nav1, nav2, nav3 = st.sidebar.columns([1, 3, 1])
+    if nav1.button("◀", key="cal_prev"):
+        if month == 1:
+            st.session_state.cal_month = 12
+            st.session_state.cal_year = year - 1
+        else:
+            st.session_state.cal_month = month - 1
+        st.rerun()
+    nav2.markdown(f"**{month_names[month]} {year}**")
+    if nav3.button("▶", key="cal_next"):
+        if month == 12:
+            st.session_state.cal_month = 1
+            st.session_state.cal_year = year + 1
+        else:
+            st.session_state.cal_month = month + 1
+        st.rerun()
+
+    # Calendario griglia
+    c = cal_module.Calendar(firstweekday=0)
+    weeks = c.monthdayscalendar(year, month)
+
+    # Header giorni
+    st.sidebar.markdown("**Lu Ma Me Gi Ve Sa Do**")
+
+    for week in weeks:
+        day_strs = []
+        for d in week:
+            if d == 0:
+                day_strs.append("  ")
+            else:
+                date_str = f"{year}-{month:02d}-{d:02d}"
+                if date_str in analysis_map:
+                    score = analysis_map[date_str].get("total_score", 0)
+                    if score > 3:
+                        day_strs.append(f"🟢")
+                    elif score < -3:
+                        day_strs.append(f"🔴")
+                    else:
+                        day_strs.append(f"🟡")
+                elif d == today.day and month == today.month and year == today.year:
+                    day_strs.append(f"🔵")
+                else:
+                    day_strs.append(f"{d:2d}")
+        st.sidebar.text(" ".join(str(x).rjust(2) for x in day_strs))
+
+    st.sidebar.caption("🟢 Analisi salvata | 🔵 Oggi")
+
+    # Dropdown per selezionare analisi
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("📅 **Carica analisi:**")
+    dates_with_analysis = [h.get("analysis_date", "") for h in history if h.get("analysis_date")]
+    selected_date = st.sidebar.selectbox("-- Seleziona data --", ["-- Seleziona data --"] + dates_with_analysis, key="sel_date")
+
     selected = None
-    for h in history[:20]:
-        date = h.get("analysis_date", "N/A")
-        score = h.get("total_score", 0)
-        bias = h.get("bias", "")
-        emoji = "\U0001F7E2" if score > 3 else ("\U0001F534" if score < -3 else "\u26AA")
-        if st.sidebar.button(f"{emoji} {date} | {score:+d} {bias}", key=f"h_{date}"):
-            selected = h
+    if selected_date and selected_date != "-- Seleziona data --":
+        selected = analysis_map.get(selected_date)
+
+    # Bottone vai a oggi
+    if st.sidebar.button("📅 Vai a Oggi"):
+        st.session_state.cal_year = today.year
+        st.session_state.cal_month = today.month
+        st.rerun()
+
     return selected
 
 
