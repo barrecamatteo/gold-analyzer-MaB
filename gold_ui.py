@@ -1,373 +1,752 @@
+"""
+Gold XAU/USD Macro Analyzer - UI Module
+Visualizzazione indicatori, punteggi e storico analisi.
+"""
 import streamlit as st
-from datetime import datetime, timedelta
-import json
-import hashlib
+import pandas as pd
+from datetime import datetime
 
-from gold_data_fetcher import (
-    fetch_all_fred_data, fetch_all_yahoo_data, fetch_gld_holdings,
-    fetch_fed_history, calculate_all_scores, _bias_label
-)
-from gold_cot_data import get_all_cot_analysis
-from gold_ui import (
-    display_indicator_cards, display_scores_table,
-    display_calendar_sidebar, display_past_analysis,
-    display_score_history_chart
-)
+# ============================================================================
+# DESCRIZIONI INDICATORI
+# ============================================================================
 
-try:
-    from zoneinfo import ZoneInfo
-    ITALY_TZ = ZoneInfo("Europe/Rome")
-except ImportError:
-    ITALY_TZ = None
-
-def get_italy_now():
-    if ITALY_TZ:
-        return datetime.now(ITALY_TZ)
-    return datetime.utcnow() + timedelta(hours=1)
-
-# === SUPABASE ===
-def get_sb():
-    try:
-        from supabase import create_client
-        return create_client(st.secrets["supabase"]["url"], st.secrets["supabase"]["key"])
-    except Exception as e:
-        st.error(f"Supabase error: {e}")
-        return None
-
-def save_analysis(user_id, scores, gold_price, raw_data):
-    sb = get_sb()
-    if not sb:
-        return False
-    try:
-        sb.table("gold_analyses").insert({
-            "user_id": user_id,
-            "analysis_date": get_italy_now().strftime("%Y-%m-%d"),
-            "gold_price": gold_price,
-            "total_score": scores.get("TOTAL", {}).get("total_score", 0),
-            "bias": scores.get("TOTAL", {}).get("bias", "N/A"),
-            "scores_json": json.dumps(scores, default=str),
-            "claude_response": json.dumps(raw_data, default=str),
-            "created_at": get_italy_now().isoformat(),
-        }).execute()
-        return True
-    except Exception as e:
-        st.error(f"Save error: {e}")
-        return False
-
-def load_history(user_id, limit=30):
-    sb = get_sb()
-    if not sb:
-        return []
-    try:
-        r = sb.table("gold_analyses").select("*").eq("user_id", user_id).order("analysis_date", desc=True).limit(limit).execute()
-        return r.data or []
-    except:
-        return []
-
-# === AUTH ===
-def hash_pw(pw):
-    return hashlib.sha256(pw.encode()).hexdigest()
-
-def auth_user(username, password):
-    sb = get_sb()
-    if not sb:
-        return None
-    try:
-        r = sb.table("gold_users").select("*").eq("username", username).execute()
-        if r.data and r.data[0]["password_hash"] == hash_pw(password):
-            return r.data[0]
-    except:
-        pass
-    return None
-
-# === DATA SOURCES CONFIG ===
-DATA_SOURCES = {
-    "fred_data": {"label": "FRED (Tassi, Inflazione)", "icon": "\U0001F4C8", "freshness_h": 24},
-    "yahoo_data": {"label": "Yahoo (DXY, VIX, Gold)", "icon": "\U0001F4B9", "freshness_h": 12},
-    "gld_data": {"label": "GLD Holdings (SPDR)", "icon": "\U0001F947", "freshness_h": 24},
-    "fed_data": {"label": "Fed (FOMC History)", "icon": "\U0001F3DB\uFE0F", "freshness_h": 168},
-    "cot_data": {"label": "COT (CFTC Gold + USD)", "icon": "\U0001F4CB", "freshness_h": 168},
+INDICATOR_INFO = {
+    "DFII10": {
+        "title": "Tasso Reale 10Y (DFII10)",
+        "icon": "\U0001F4C9",
+        "what": "Il rendimento reale dei Treasury USA a 10 anni, ricavato dai TIPS (Treasury Inflation-Protected Securities). A differenza del rendimento nominale, questo tasso esclude l\u2019inflazione attesa e rappresenta il guadagno \u2018vero\u2019 che un investitore ottiene in termini di potere d\u2019acquisto. Con un DFII10 all\u20191.8%, chi compra un bond USA guadagna l\u20191.8% reale all\u2019anno per 10 anni. \u00C8 il principale concorrente dell\u2019oro: pi\u00F9 \u00E8 alto, meno conviene detenere oro (che non paga cedole).",
+        "why": "Tassi reali bassi o in calo sono BULLISH per l\u2019oro (basso costo opportunit\u00E0 nel detenere oro). Tassi reali alti o in salita sono BEARISH (conviene detenere bond).",
+        "scoring": "Livello: <0.5% = +1 | 0.5-1.5% = 0 | >1.5% = -1 \u2014 Momentum 4w: calo >0.15% = +1 | stabile = 0 | salita >0.15% = -1",
+        "max": "\u00B12",
+    },
+    "DXY": {
+        "title": "DXY (US Dollar Index)",
+        "icon": "\U0001F4B5",
+        "what": "Indice che misura la forza del dollaro USA rispetto a un paniere di 6 valute: Euro (57.6%), Yen (13.6%), Sterlina (11.9%), Dollaro canadese (9.1%), Corona svedese (4.2%) e Franco svizzero (3.6%). Siccome l\u2019oro \u00E8 quotato in dollari, un dollaro pi\u00F9 debole rende l\u2019oro pi\u00F9 economico per chi compra in altre valute, stimolando la domanda.",
+        "why": "Correlazione inversa con l\u2019oro. Dollaro debole = oro forte. DXY sotto 98 \u00E8 fortemente bullish per l\u2019oro.",
+        "scoring": "Livello: <98 = +2 | 98-101 = +1 | 101-105 = 0 | 105-107 = -1 | >107 = -2 \u2014 Momentum 4w: calo >1.5pt = +1 | stabile = 0 | salita >1.5pt = -1",
+        "max": "\u00B13",
+    },
+    "T10YIE": {
+        "title": "Breakeven Inflation 10Y (T10YIE)",
+        "icon": "\U0001F4CA",
+        "what": "Le aspettative di inflazione a 10 anni prezzate dal mercato obbligazionario. Si calcola come differenza tra il rendimento nominale del Treasury 10Y e il tasso reale (DFII10). Se il T10YIE \u00E8 al 2.3%, il mercato si aspetta un\u2019inflazione media del 2.3% annuo per i prossimi 10 anni.",
+        "why": "L\u2019oro \u00E8 un hedge contro l\u2019inflazione. Aspettative in salita = BULLISH, in calo = BEARISH.",
+        "scoring": "Livello: <2.0% = -1 | 2.0-2.5% = 0 | >2.5% = +1 \u2014 Momentum 4w: salita >0.10% = +1 | stabile = 0 | calo >0.10% = -1",
+        "max": "\u00B12",
+    },
+    "FED_SPREAD": {
+        "title": "Fed Expectations (Spread FFR - Treasury 2Y)",
+        "icon": "\U0001F3E6",
+        "what": "Lo spread tra il tasso Fed Funds effettivo (il tasso a cui le banche si prestano denaro overnight, controllato dalla Fed) e il rendimento del Treasury a 2 anni (che riflette dove il mercato si aspetta che i tassi saranno nei prossimi 2 anni). Se il 2Y \u00E8 molto sotto il FFR, significa che il mercato prezza tagli dei tassi imminenti. Se \u00E8 sopra, prezza rialzi.",
+        "why": "Se il 2Y \u00E8 molto sotto il FFR, il mercato prezza tagli (BULLISH oro). Se sopra, prezza rialzi (BEARISH).",
+        "scoring": "Spread: >+0.50% = +1 (tagli) | -0.25/+0.50% = 0 | <-0.25% = -1 (rialzi) \u2014 Momentum 4w: spread in aumento >0.15% = +1 | stabile = 0 | in calo = -1",
+        "max": "\u00B12",
+    },
+    "GLD": {
+        "title": "GLD Holdings (SPDR Gold Shares)",
+        "icon": "\U0001F947",
+        "what": "La quantit\u00E0 di oro fisico (in tonnellate) custodita nei caveau dell\u2019ETF SPDR Gold Shares (ticker GLD), il pi\u00F9 grande ETF sull\u2019oro al mondo con oltre 800 tonnellate. Quando gli investitori istituzionali comprano quote GLD, il fondo deve acquistare oro fisico \u2014 gli afflussi indicano domanda istituzionale crescente, i deflussi il contrario.",
+        "why": "Afflussi = domanda istituzionale in crescita (BULLISH). Deflussi = domanda in calo (BEARISH). Conta solo il momentum.",
+        "scoring": "Solo momentum: variazione >+10t in 4 sett. = +1 | stabile = 0 | <-10t = -1",
+        "max": "\u00B11",
+    },
+    "VIX": {
+        "title": "VIX (CBOE Volatility Index)",
+        "icon": "\u26A1",
+        "what": "Indice calcolato dal CBOE che misura la volatilit\u00E0 attesa dell\u2019S&P 500 nei prossimi 30 giorni, ricavata dai prezzi delle opzioni. Noto come \u201Cindice della paura\u201D: valori bassi (<15) indicano mercati calmi e fiduciosi (risk-on), valori alti (>20) indicano nervosismo e incertezza (risk-off). Quando il VIX sale bruscamente, gli investitori cercano asset rifugio come l\u2019oro.",
+        "why": "VIX alto = risk-off = investitori cercano rifugio nell\u2019oro (BULLISH). VIX basso = risk-on (BEARISH).",
+        "scoring": "Livello: <15 = -1 | 15-20 = 0 | >20 = +1 \u2014 Momentum 1w: spike >+5pt = +1 | stabile = 0 | calo >5pt = -1",
+        "max": "\u00B12",
+    },
+    "COT": {
+        "title": "COT Non-Commercial (Speculative Positioning)",
+        "icon": "\U0001F4CB",
+        "what": "Dati dal Commitment of Traders Report, pubblicato ogni venerd\u00EC dalla CFTC (Commodity Futures Trading Commission). Mostra le posizioni nette (long meno short) dei trader \u201Cnon-commercial\u201D (hedge fund, speculatori) sui futures dell\u2019oro e del dollaro. Il COT Index (0-100%) indica dove si trova il posizionamento attuale rispetto al range delle ultime 52 settimane: 0% = minimo storico di posizioni long, 100% = massimo storico.",
+        "why": "COT Index alto (>75%) = molto long, BULLISH ma attenzione a eccessi. Index basso (<25%) = BEARISH. Confronto Gold vs USD per coerenza.",
+        "scoring": "Posizionamento: Index >75% = +1 | 25-75% = 0 | <25% = -1 \u2014 Momentum: net long sopra MA 4w = +1 | intorno = 0 | sotto = -1",
+        "max": "\u00B12",
+    },
+    "COT_USD": {
+        "title": "COT USD Index (Speculative Positioning)",
+        "icon": "\U0001F4B5",
+        "what": "Posizionamento netto degli speculatori sui futures dell\u2019USD Index (CFTC). Punteggio INVERTITO per l\u2019oro: se gli speculatori sono long dollaro (bullish USD), \u00E8 bearish per l\u2019oro e viceversa. Usato in combinazione con il COT Oro per verificare la coerenza dei segnali.",
+        "why": "Se gli speculatori vendono dollaro e comprano oro contemporaneamente, il segnale bullish oro \u00E8 pi\u00F9 affidabile. Se comprano entrambi, c\u2019\u00E8 divergenza.",
+        "scoring": "Invertito: USD Long >75% = -1 (bearish oro) | 25-75% = 0 | <25% = +1 (bullish oro) \u2014 Momentum invertito allo stesso modo",
+        "max": "\u00B12",
+    },
+    "FED_TREND": {
+        "title": "Fed Trend (Ciclo FOMC)",
+        "icon": "\U0001F3DB\uFE0F",
+        "what": "La direzione del ciclo di politica monetaria della Federal Reserve, basata sulle decisioni pi\u00F9 recenti del FOMC (Federal Open Market Committee) che si riunisce circa ogni 6 settimane. Il ciclo pu\u00F2 essere di: easing (tagli dei tassi), tightening (rialzi dei tassi), pausa post-taglio (ha appena smesso di tagliare) o pausa post-rialzo (ha appena smesso di alzare).",
+        "why": "Ciclo di taglio/easing = BULLISH (tassi pi\u00F9 bassi, costo opportunit\u00E0 basso). Ciclo di rialzo = BEARISH.",
+        "scoring": "Easing/Pausa post-taglio = +1 | Holding = 0 | Tightening/Pausa post-rialzo = -1",
+        "max": "\u00B11",
+    },
+    "SEASONALITY": {
+        "title": "Stagionalit\u00E0 Oro",
+        "icon": "\U0001F4C5",
+        "what": "Pattern ricorrenti nella performance storica dell\u2019oro legati a fattori stagionali. Gennaio e Febbraio sono forti per la domanda fisica dal Capodanno lunare cinese e i matrimoni in India. Settembre \u00E8 storicamente il mese pi\u00F9 forte per l\u2019oro, trainato dalla stagione dei festival indiani (Diwali). Dicembre beneficia dei ribilanciamenti di portafoglio di fine anno. Marzo-Giugno tende ad essere il periodo pi\u00F9 debole.",
+        "why": "La domanda fisica di oro ha pattern ricorrenti legati a festivit\u00E0 e ribilanciamenti di portafoglio.",
+        "scoring": "Mese favorevole = +1 | Neutro = 0 | Sfavorevole = -1",
+        "max": "\u00B11",
+    },
 }
 
-def check_freshness(data_key, last_updated):
-    if last_updated is None:
-        return {"is_fresh": False, "status": "\U0001F534", "message": "Mai aggiornato", "ago": ""}
-    now = get_italy_now()
-    if isinstance(last_updated, str):
-        try:
-            last_updated = datetime.fromisoformat(last_updated)
-        except:
-            return {"is_fresh": False, "status": "\U0001F534", "message": "Data non valida", "ago": ""}
-    if last_updated.tzinfo is None and ITALY_TZ:
-        last_updated = last_updated.replace(tzinfo=ITALY_TZ)
-    age_h = (now - last_updated).total_seconds() / 3600
-    mx = DATA_SOURCES.get(data_key, {}).get("freshness_h", 24)
-    date_str = last_updated.strftime("%d/%m %H:%M")
-    if age_h < mx:
-        return {"is_fresh": True, "status": "\U0001F7E2", "message": f"{date_str}", "ago": f"{int(age_h)}h fa"}
-    return {"is_fresh": False, "status": "\U0001F7E0", "message": f"{date_str}", "ago": f"{int(age_h)}h fa"}
 
-def fetch_source(key):
-    if key == "fred_data":
-        return fetch_all_fred_data(st.secrets["fred"]["api_key"])
-    elif key == "yahoo_data":
-        return fetch_all_yahoo_data()
-    elif key == "gld_data":
-        return fetch_gld_holdings()
-    elif key == "fed_data":
-        return fetch_fed_history()
-    elif key == "cot_data":
-        return get_all_cot_analysis()
-    return None
+# ============================================================================
+# INDICATOR CARDS (sempre aperte, solo dati, no punteggio)
+# ============================================================================
 
-def _build_raw_data_for_save():
-    """Costruisce il blob di dati grezzi completo per il salvataggio, incluse serie storiche."""
-    raw = {"fred": {}, "yahoo": {}, "gld": {}, "fed": {}, "cot": {}, "timestamps": {}}
+def display_indicator_cards(fred_data, yahoo_data, gld_data, fed_data, cot_data):
+    """Mostra tutte le schede indicatori sempre aperte, con descrizione e valore."""
 
-    # FRED - salva anche serie storiche (ultimi 10 punti)
-    if st.session_state.fred_data:
-        for sid, d in st.session_state.fred_data.items():
-            if not d.get("error"):
-                raw["fred"][sid] = {
-                    "latest_value": d.get("latest_value"),
-                    "latest_date": d.get("latest_date"),
-                    "values": d.get("values", [])[:10],
-                }
-
-    # Yahoo - salva anche serie storiche
-    if st.session_state.yahoo_data:
-        for tk, d in st.session_state.yahoo_data.items():
-            if not d.get("error"):
-                raw["yahoo"][tk] = {
-                    "latest_value": d.get("latest_value"),
-                    "latest_date": d.get("latest_date"),
-                    "values": d.get("values", [])[:10],
-                }
-
-    # GLD - serie storica
-    if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
-        raw["gld"] = {
-            "latest_tonnes": st.session_state.gld_data.get("latest_tonnes"),
-            "latest_date": st.session_state.gld_data.get("latest_date"),
-            "values": st.session_state.gld_data.get("values", [])[:10],
-            "source": st.session_state.gld_data.get("source", ""),
-        }
-
-    # Fed - meetings completi
-    if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
-        raw["fed"] = {
-            "current_rate": st.session_state.fed_data.get("current_rate"),
-            "trend_label": st.session_state.fed_data.get("trend_label"),
-            "trend_emoji": st.session_state.fed_data.get("trend_emoji"),
-            "meetings": st.session_state.fed_data.get("meetings", [])[:8],
-        }
-
-    # COT - entrambi gli asset con dettaglio
-    if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
-        for asset_key in ["GOLD", "USD"]:
-            d = st.session_state.cot_data.get(asset_key, {})
-            if d and not d.get("error"):
-                raw["cot"][asset_key] = {
-                    "net_long": d.get("net_long"),
-                    "cot_index": d.get("cot_index"),
-                    "delta_1w": d.get("delta_1w"),
-                    "ma_4w": d.get("ma_4w"),
-                    "delta_vs_ma": d.get("delta_vs_ma"),
-                    "min_52w": d.get("min_52w"),
-                    "max_52w": d.get("max_52w"),
-                    "pos_score": d.get("pos_score"),
-                    "momentum_score": d.get("momentum_score"),
-                    "total_score": d.get("total_score"),
-                    "interpretation": d.get("interpretation"),
-                    "latest_date": d.get("latest_date"),
-                }
-        raw["cot"]["latest_date"] = st.session_state.cot_data.get("latest_date", "")
-
-    # Timestamps
-    for dk in DATA_SOURCES:
-        raw["timestamps"][dk] = st.session_state.get(f"{dk}_ts", "N/A")
-
-    return raw
-
-# === MAIN ===
-def main():
-    st.set_page_config(page_title="Gold XAU/USD Macro Analyzer", page_icon="\U0001F947",
-                       layout="wide", initial_sidebar_state="expanded")
-    st.markdown("""<style>
-    .stMetricValue {font-size:1.3rem!important}
-    .main .block-container {padding-top:1rem;max-width:1200px}
-    </style>""", unsafe_allow_html=True)
-
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if "user_id" not in st.session_state:
-        st.session_state.user_id = None
-    if "analysis_done" not in st.session_state:
-        st.session_state.analysis_done = False
-    if "analysis_scores" not in st.session_state:
-        st.session_state.analysis_scores = None
-
-    # LOGIN
-    if not st.session_state.authenticated:
-        st.title("\U0001F947 Gold XAU/USD Macro Analyzer")
-        st.markdown("*Analisi macro settimanale con scoring automatico*")
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            u = st.text_input("Username")
-            p = st.text_input("Password", type="password")
-            if st.button("Accedi", type="primary"):
-                user = auth_user(u, p)
-                if user:
-                    st.session_state.authenticated = True
-                    st.session_state.user_id = user.get("id", u)
-                    st.session_state.username = u
-                    st.rerun()
-                else:
-                    st.error("Credenziali non valide")
+    if not fred_data and not yahoo_data:
+        st.info("Carica i dati per visualizzare gli indicatori.")
         return
 
-    # MAIN APP
-    st.title("\U0001F947 Gold XAU/USD Macro Analyzer")
-    st.caption(f"User: {st.session_state.get('username','?')} | {get_italy_now().strftime('%d/%m/%Y %H:%M')}")
-
-    # Sidebar
-    history = load_history(st.session_state.user_id)
-    sel_hist = display_calendar_sidebar(history)
-    if st.sidebar.button("Logout"):
-        st.session_state.authenticated = False
-        st.rerun()
-
-    # Se selezionata analisi passata, mostrala
-    if sel_hist:
-        display_past_analysis(sel_hist)
-        st.markdown("---")
-        if st.button("\u2B05\uFE0F Torna all'analisi corrente"):
-            st.rerun()
-        return
-
-    # Init session state per ogni data source
-    for dk in DATA_SOURCES:
-        if dk not in st.session_state:
-            st.session_state[dk] = None
-        if f"{dk}_ts" not in st.session_state:
-            st.session_state[f"{dk}_ts"] = None
-
-    # === AUTO-LOAD: al primo accesso scarica dati freschi + carica ultimo risultato ===
-    if "initial_load_done" not in st.session_state:
-        st.session_state.initial_load_done = False
-
-    if not st.session_state.initial_load_done:
-        # Carica ultimo risultato analisi
-        if history:
-            last = history[0]
-            try:
-                last_scores = json.loads(last.get("scores_json", "{}"))
-                if last_scores:
-                    last_scores["TOTAL"] = {
-                        "total_score": last.get("total_score", 0),
-                        "bias": last.get("bias", "N/A"),
-                    }
-                    st.session_state.analysis_scores = last_scores
-                    st.session_state.analysis_done = True
-                    st.session_state.last_analysis_date = last.get("analysis_date", "N/A")
-            except:
-                pass
-
-        # Scarica automaticamente tutti i dati freschi
-        with st.spinner("Caricamento dati in corso..."):
-            for dk in DATA_SOURCES:
-                try:
-                    st.session_state[dk] = fetch_source(dk)
-                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
-                except:
-                    pass
-        st.session_state.initial_load_done = True
-        st.rerun()
-
-    # === SEZIONE DATA SOURCES CON BOTTONI ===
-    st.markdown("## \U0001F4E5 Fonti Dati")
-
-    if st.button("\U0001F504 Aggiorna TUTTO", type="primary"):
-        with st.spinner("Aggiornamento completo..."):
-            for dk in DATA_SOURCES:
-                try:
-                    st.session_state[dk] = fetch_source(dk)
-                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
-                except Exception as e:
-                    st.error(f"{DATA_SOURCES[dk]['label']}: {e}")
-            st.session_state.analysis_done = False
-            st.session_state.analysis_scores = None
-            st.rerun()
-
-    st.markdown("")
-
-    for dk, cfg in DATA_SOURCES.items():
-        f = check_freshness(dk, st.session_state.get(f"{dk}_ts"))
-        c1, c2, c3, c4 = st.columns([0.5, 3, 2, 1.5])
-        c1.markdown(f"### {cfg['icon']}")
-        c2.markdown(f"**{cfg['label']}**")
-        if f["ago"]:
-            c3.markdown(f"{f['status']} {f['message']} ({f['ago']})")
-        else:
-            c3.markdown(f"{f['status']} Mai aggiornato")
-        if c4.button("\U0001F504 Aggiorna", key=f"btn_{dk}"):
-            with st.spinner(f"{cfg['label']}..."):
-                try:
-                    st.session_state[dk] = fetch_source(dk)
-                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
-                    st.session_state.analysis_done = False
-                    st.session_state.analysis_scores = None
-                except Exception as e:
-                    st.error(f"{cfg['label']}: {e}")
-                st.rerun()
-
-    # === SCHEDE INDICATORI (SEMPRE APERTE) ===
+    # 1. DFII10
+    _card_header("DFII10")
+    if fred_data.get("DFII10") and not fred_data["DFII10"].get("error"):
+        d = fred_data["DFII10"]
+        c1, c2 = st.columns(2)
+        c1.metric("Valore attuale", f"{d['latest_value']:.4f}%", help="Tasso reale 10Y TIPS")
+        c2.metric("Data", d["latest_date"])
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Tasso Reale %", ".4f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
     st.markdown("---")
 
-    last_date = st.session_state.get("last_analysis_date")
-    if last_date and st.session_state.analysis_done:
-        st.info(f"\U0001F4C5 Ultima analisi salvata: **{last_date}**")
+    # 2. T10YIE
+    _card_header("T10YIE")
+    if fred_data.get("T10YIE") and not fred_data["T10YIE"].get("error"):
+        d = fred_data["T10YIE"]
+        c1, c2 = st.columns(2)
+        c1.metric("Valore attuale", f"{d['latest_value']:.4f}%", help="Breakeven Inflation 10Y")
+        c2.metric("Data", d["latest_date"])
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Breakeven %", ".4f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
 
-    st.markdown("## \U0001F4CA Indicatori")
-    display_indicator_cards(
-        fred_data=st.session_state.fred_data or {},
-        yahoo_data=st.session_state.yahoo_data or {},
-        gld_data=st.session_state.gld_data or {},
-        fed_data=st.session_state.fed_data or {},
-        cot_data=st.session_state.cot_data,
+    # 3. DXY
+    _card_header("DXY")
+    if yahoo_data.get("DXY") and not yahoo_data["DXY"].get("error"):
+        d = yahoo_data["DXY"]
+        c1, c2 = st.columns(2)
+        c1.metric("Valore attuale", f"{d['latest_value']:.2f}", help="US Dollar Index")
+        c2.metric("Data", d["latest_date"])
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "DXY", ".2f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 4. Fed Expectations (spread)
+    _card_header("FED_SPREAD")
+    if fred_data.get("DFF") and fred_data.get("DGS2"):
+        dff = fred_data["DFF"]
+        dgs2 = fred_data["DGS2"]
+        if not dff.get("error") and not dgs2.get("error"):
+            spread = dff["latest_value"] - dgs2["latest_value"]
+            c1, c2, c3 = st.columns(3)
+            c1.metric("FFR (Fed Funds)", f"{dff['latest_value']:.4f}%")
+            c2.metric("Treasury 2Y", f"{dgs2['latest_value']:.4f}%")
+            c3.metric("Spread (FFR - 2Y)", f"{spread:+.4f}%",
+                      help="Positivo = mercato prezza tagli, Negativo = prezza rialzi")
+            # Spread history
+            dff_dict = {v["date"]: v["value"] for v in dff.get("values", [])}
+            spread_hist = []
+            for v in dgs2.get("values", []):
+                if v["date"] in dff_dict:
+                    spread_hist.append({"date": v["date"], "value": round(dff_dict[v["date"]] - v["value"], 4)})
+            if len(spread_hist) >= 2:
+                _show_mini_history(spread_hist, "Spread %", ".4f")
+        else:
+            st.caption("\U0001F534 Dati non disponibili")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 5. GLD Holdings
+    _card_header("GLD")
+    if gld_data and not gld_data.get("error"):
+        c1, c2 = st.columns(2)
+        c1.metric("Tonnellate attuali", f"{gld_data.get('latest_tonnes', 0):.2f}t")
+        c2.metric("Data", gld_data.get("latest_date", "N/A"))
+        if gld_data.get("values") and len(gld_data["values"]) >= 2:
+            _show_mini_history(gld_data["values"], "Tonnellate", ".2f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 6. VIX
+    _card_header("VIX")
+    if yahoo_data.get("VIX") and not yahoo_data["VIX"].get("error"):
+        d = yahoo_data["VIX"]
+        c1, c2 = st.columns(2)
+        c1.metric("Valore attuale", f"{d['latest_value']:.2f}", help="CBOE Volatility Index")
+        c2.metric("Data", d["latest_date"])
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "VIX", ".2f")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 7. COT
+    _card_header("COT")
+    if cot_data and not cot_data.get("error"):
+        _display_cot_table(cot_data)
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 8. Fed Trend
+    _card_header("FED_TREND")
+    if fed_data and not fed_data.get("error"):
+        c1, c2 = st.columns(2)
+        c1.metric("Tasso attuale", fed_data.get("current_rate", "N/A"))
+        c2.metric("Trend", f"{fed_data.get('trend_emoji', '')} {fed_data.get('trend_label', 'N/A')}")
+        st.markdown("**Ultimi meeting FOMC:**")
+        for m in fed_data.get("meetings", [])[:5]:
+            decision_emoji = "\U0001F534" if m.get("decision") == "cut" else ("\U0001F7E2" if m.get("decision") == "hike" else "\u2796")
+            st.markdown(f"- **{m['date_formatted']}**: {decision_emoji} {m['change']} \u2014 Tasso: {m['rate']}")
+    else:
+        st.caption("\U0001F534 Dati non disponibili")
+    st.markdown("---")
+
+    # 9. Stagionalita
+    _card_header("SEASONALITY")
+    now = datetime.now()
+    month_names = {1:"Gennaio",2:"Febbraio",3:"Marzo",4:"Aprile",5:"Maggio",6:"Giugno",
+                   7:"Luglio",8:"Agosto",9:"Settembre",10:"Ottobre",11:"Novembre",12:"Dicembre"}
+    st.markdown(f"**Mese corrente:** {month_names.get(now.month, '?')} \u2014 pattern storico basato su domanda fisica e ribilanciamenti")
+
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+def _card_header(key):
+    """Header di una card indicatore con descrizione."""
+    info = INDICATOR_INFO.get(key, {})
+    st.markdown(f"### {info.get('icon', '')} {info.get('title', key)}")
+    st.markdown(f"**Cos\u2019\u00E8:** {info.get('what', '')}")
+    st.markdown(f"**Perch\u00E9 conta:** {info.get('why', '')}")
+    st.caption(f"Scoring: {info.get('scoring', '')} | Max: {info.get('max', '')}")
+
+
+def _show_mini_history(values, label, fmt, n=6):
+    """Mostra mini-tabella con ultimi N valori e variazione."""
+    if not values or len(values) < 2:
+        return
+    step = max(1, len(values) // n) if len(values) > n else 1
+    selected = values[::step][:n]
+    rows = []
+    for i, v in enumerate(selected):
+        delta = ""
+        if i < len(selected) - 1:
+            d = v["value"] - selected[i + 1]["value"]
+            delta = f"{d:+{fmt}}"
+        rows.append({"Data": v["date"], label: f"{v['value']:{fmt}}", "\u0394": delta})
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True, height=min(250, 35 * (len(rows) + 1)))
+
+
+def _net_emoji(val):
+    return "\U0001F7E2" if val > 0 else ("\U0001F534" if val < 0 else "\u26AA")
+
+def _index_emoji(val):
+    if val >= 75: return "\U0001F535"
+    if val >= 50: return "\U0001F7E2"
+    if val >= 25: return "\u26AA"
+    return "\U0001F534"
+
+def _score_emoji(val):
+    if val > 0: return "\U0001F7E2"
+    if val < 0: return "\U0001F534"
+    return "\u26AA"
+
+
+def _display_cot_table(cot_data):
+    """Tabella COT stile forex con Gold e USD."""
+    st.markdown("**COT Non-Commercial (Speculatori)**")
+    assets = []
+    for key in ["GOLD", "USD"]:
+        d = cot_data.get(key, {})
+        if d and not d.get("error"):
+            assets.append({"key": key, "name": "Oro" if key == "GOLD" else "USD Index",
+                          "icon": "\U0001F947" if key == "GOLD" else "\U0001F4B5", "data": d})
+
+    if not assets:
+        if cot_data.get("cot_index") is not None:
+            assets.append({"key": "GOLD", "name": "Oro", "icon": "\U0001F947", "data": cot_data})
+
+    if not assets:
+        st.warning("Dati COT non disponibili")
+        return
+
+    rows = []
+    for a in assets:
+        d = a["data"]
+        net = d.get("net_long", 0)
+        ci = d.get("cot_index", 50)
+        d1w = d.get("delta_1w", 0)
+        ts = d.get("total_score", d.get("pos_score", 0) + d.get("momentum_score", 0))
+        interp = d.get("interpretation", "N/A")
+        rows.append({
+            "Asset": f"{a['icon']} {a['name']}",
+            "Net Position": f"{_net_emoji(net)} {net:+,}",
+            "COT Index": f"{_index_emoji(ci)} {ci:.0f}%",
+            "Delta Sett.": f"{_net_emoji(d1w)} {d1w:+,}",
+            "Interpretazione": interp,
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    report_date = cot_data.get("latest_date", "")
+    if not report_date:
+        for key in ["GOLD", "USD"]:
+            d = cot_data.get(key, {})
+            if d.get("latest_date"):
+                report_date = d["latest_date"]
+                break
+    if report_date:
+        st.caption(f"Dati report: {report_date}")
+
+    # Dettaglio per asset
+    for a in assets:
+        d = a["data"]
+        with st.expander(f"Dettaglio {a['name']}", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Net Long", f"{d.get('net_long', 0):+,}")
+            c2.metric("Media 4 sett.", f"{d.get('ma_4w', 0):,.0f}")
+            c3.metric("Delta vs MA", f"{d.get('delta_vs_ma', 0):+,.0f}")
+            c4.metric("COT Index", f"{d.get('cot_index', 50):.1f}%")
+            st.markdown(f"**Range 52 sett.:** Min {d.get('min_52w', 0):,} | Max {d.get('max_52w', 0):,}")
+            ci = d.get("cot_index", 50)
+            if ci < 5:
+                st.warning("Posizionamento al minimo 52 sett. Possibile segnale contrarian bullish.")
+            elif ci > 95:
+                st.warning("Posizionamento al massimo 52 sett. Possibile segnale contrarian bearish.")
+
+    # Convergenza Gold vs USD
+    gold_d = cot_data.get("GOLD", {})
+    usd_d = cot_data.get("USD", {})
+    if gold_d and usd_d and not gold_d.get("error") and not usd_d.get("error"):
+        gold_mom = gold_d.get("momentum_score", 0)
+        usd_mom = usd_d.get("momentum_score", 0)
+        if gold_mom > 0 and usd_mom < 0:
+            st.success("\u2705 Convergenza: speculatori comprano oro e vendono dollaro. Segnale coerente BULLISH.")
+        elif gold_mom < 0 and usd_mom > 0:
+            st.error("\u274C Convergenza: speculatori vendono oro e comprano dollaro. Segnale coerente BEARISH.")
+        elif gold_mom > 0 and usd_mom > 0:
+            st.info("\u2194\uFE0F Divergenza: comprano sia oro che dollaro. Possibile flight to safety.")
+        elif gold_mom < 0 and usd_mom < 0:
+            st.info("\u2194\uFE0F Divergenza: vendono sia oro che dollaro. Risk-on su altri asset.")
+
+
+# ============================================================================
+# TABELLA RIEPILOGO PUNTEGGI
+# ============================================================================
+
+def display_scores_table(scores):
+    """Tabella riassuntiva punteggi finale con legenda."""
+    # Gold price in evidenza
+    gp = scores.get("GOLD_PRICE", {})
+    if gp.get("value"):
+        st.metric("💰 Prezzo XAU/USD", gp["value"])
+
+    keys = ["DFII10", "T10YIE", "DXY", "FED_EXPECT", "GLD", "VIX", "COT", "COT_USD", "FED_TREND", "SEASONALITY"]
+    rows = []
+    for key in keys:
+        s = scores.get(key, {})
+        if "total_score" not in s:
+            continue
+        sv = s.get("total_score", 0)
+        emoji = "🟢" if sv > 0 else ("🔴" if sv < 0 else "⚪")
+        lv = s.get("level_score", 0)
+        mv = s.get("momentum_score", 0)
+        rows.append({
+            "Indicatore": s.get("name", key),
+            "Valore": str(s.get("value", "N/A")),
+            "Livello": f"{lv:+d}",
+            "Momentum": f"{mv:+d}",
+            "Score Totale": f"{emoji} {sv:+d}",
+            "Commento": s.get("comment", ""),
+        })
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Totale + Bias
+    total = scores.get("TOTAL", {})
+    ts = total.get("total_score", 0)
+    bias = total.get("bias", "N/A")
+    if ts >= 10:
+        bias_dot = "\U0001F7E2"
+    elif ts >= 4:
+        bias_dot = "\U0001F7E2"
+    elif ts >= -3:
+        bias_dot = "\U0001F7E1"
+    elif ts >= -9:
+        bias_dot = "\U0001F534"
+    else:
+        bias_dot = "\U0001F534"
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
+    c2.markdown("**BIAS**")
+    c2.markdown(f"### {bias_dot} {bias}")
+    # Barra visuale
+    pct = max(0.01, min(0.99, (ts + 18) / 36))
+    c3.markdown("**Forza segnale**")
+    c3.progress(pct)
+
+    # Legenda
+    st.markdown("---")
+    st.markdown(
+        "**Legenda:** "
+        "🟢🟢 = FORTE BULLISH (+10 a +18) | "
+        "🟢 = MODERATO BULLISH (+4 a +9) | "
+        "🟡 = NEUTRO (-3 a +3) | "
+        "🔴 = MODERATO BEARISH (-9 a -4) | "
+        "🔴🔴 = FORTE BEARISH (-18 a -10)"
     )
 
-    # === AVVIA ANALISI ===
-    st.markdown("---")
-    required = ["fred_data", "yahoo_data"]
-    missing = [DATA_SOURCES[k]["label"] for k in required if not st.session_state.get(k)]
 
-    if missing:
-        st.warning(f"Dati mancanti per l'analisi: {', '.join(missing)}")
 
-    if st.button("\U0001F680 Avvia Analisi", type="primary", disabled=bool(missing)):
-        scores = calculate_all_scores(
-            fred_data=st.session_state.fred_data,
-            yahoo_data=st.session_state.yahoo_data,
-            gld_data=st.session_state.gld_data or {},
-            fed_data=st.session_state.fed_data or {},
-            cot_data=st.session_state.cot_data,
-        )
-        gold_price = scores.get("GOLD_PRICE", {}).get("value_raw", 0)
-        raw_data = _build_raw_data_for_save()
-        save_analysis(st.session_state.user_id, scores, gold_price, raw_data)
-        st.session_state.analysis_scores = scores
-        st.session_state.analysis_done = True
-        st.session_state.last_analysis_date = get_italy_now().strftime("%Y-%m-%d")
+
+def display_score_history_chart(history):
+    """Grafico storico del punteggio totale nel tempo."""
+    if not history or len(history) < 2:
+        return
+
+    import plotly.graph_objects as go
+
+    st.markdown("### \U0001F4C8 Storico Punteggio nel Tempo")
+
+    rows = []
+    for h in reversed(history):
+        date = h.get("analysis_date", "")
+        score = h.get("total_score", 0)
+        gold_price = h.get("gold_price", 0)
+        if date:
+            rows.append({"Data": date, "Score": score, "Gold ($)": gold_price})
+
+    if len(rows) < 2:
+        return
+
+    df = pd.DataFrame(rows)
+    df["Data"] = pd.to_datetime(df["Data"])
+    df = df.sort_values("Data")
+
+    fig = go.Figure()
+    fig.add_hrect(y0=10, y1=18, fillcolor="green", opacity=0.08, line_width=0, annotation_text="FORTE BULLISH", annotation_position="top left")
+    fig.add_hrect(y0=4, y1=10, fillcolor="green", opacity=0.05, line_width=0, annotation_text="MOD. BULLISH", annotation_position="top left")
+    fig.add_hrect(y0=-3, y1=4, fillcolor="yellow", opacity=0.05, line_width=0, annotation_text="NEUTRO", annotation_position="top left")
+    fig.add_hrect(y0=-9, y1=-3, fillcolor="red", opacity=0.05, line_width=0, annotation_text="MOD. BEARISH", annotation_position="top left")
+    fig.add_hrect(y0=-18, y1=-9, fillcolor="red", opacity=0.08, line_width=0, annotation_text="FORTE BEARISH", annotation_position="top left")
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+
+    colors = []
+    for s in df["Score"]:
+        if s >= 4: colors.append("green")
+        elif s <= -4: colors.append("red")
+        else: colors.append("#eab308")
+
+    fig.add_trace(go.Scatter(
+        x=df["Data"], y=df["Score"], mode="lines+markers", name="Score",
+        line=dict(color="#2563eb", width=3),
+        marker=dict(size=10, color=colors, line=dict(width=1, color="white")),
+        hovertemplate="<b>%{x|%d/%m/%Y}</b><br>Score: %{y:+d}<extra></extra>",
+    ))
+
+    fig.update_layout(
+        height=400, margin=dict(l=40, r=40, t=20, b=40),
+        yaxis=dict(title="Punteggio", range=[-18, 18], dtick=3, gridcolor="rgba(0,0,0,0.1)"),
+        xaxis=dict(title="", gridcolor="rgba(0,0,0,0.1)"),
+        plot_bgcolor="white", hovermode="x unified",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("**Ultime analisi:**")
+    recent = list(reversed(rows))[:10]
+    recent_df = pd.DataFrame(recent)
+    recent_df["Score"] = recent_df["Score"].apply(lambda x: f"{x:+d}")
+    recent_df["Gold ($)"] = recent_df["Gold ($)"].apply(lambda x: f"${x:,.2f}" if x else "N/A")
+    recent_df["Data"] = recent_df["Data"].dt.strftime("%d/%m/%Y")
+    st.dataframe(recent_df, use_container_width=True, hide_index=True)
+
+
+# ============================================================================
+# SIDEBAR CALENDARIO
+# ============================================================================
+
+def display_calendar_sidebar(history):
+    """Calendario sidebar stile forex con HTML."""
+    import calendar as cal_module
+    from datetime import date as date_type
+
+    st.sidebar.markdown("### 📁 Storico Analisi")
+
+    if not history:
+        st.sidebar.info("Nessuna analisi salvata")
+        return None
+
+    # Mappa date analisi -> score
+    analysis_map = {}
+    for h in history:
+        d = h.get("analysis_date", "")
+        if d:
+            analysis_map[d] = h
+
+    today = date_type.today()
+    if "cal_year" not in st.session_state:
+        st.session_state.cal_year = today.year
+    if "cal_month" not in st.session_state:
+        st.session_state.cal_month = today.month
+
+    year = st.session_state.cal_year
+    month = st.session_state.cal_month
+
+    month_names = {1:"Gen",2:"Feb",3:"Mar",4:"Apr",5:"Mag",6:"Giu",
+                   7:"Lug",8:"Ago",9:"Set",10:"Ott",11:"Nov",12:"Dic"}
+
+    # Navigazione
+    nav1, nav2, nav3 = st.sidebar.columns([1, 3, 1])
+    if nav1.button("◀", key="cal_prev"):
+        if month == 1:
+            st.session_state.cal_month = 12
+            st.session_state.cal_year = year - 1
+        else:
+            st.session_state.cal_month = month - 1
+        st.rerun()
+    nav2.markdown(f"<p style='text-align:center;font-weight:bold;margin:0'>{month_names[month]} {year}</p>", unsafe_allow_html=True)
+    if nav3.button("▶", key="cal_next"):
+        if month == 12:
+            st.session_state.cal_month = 1
+            st.session_state.cal_year = year + 1
+        else:
+            st.session_state.cal_month = month + 1
         st.rerun()
 
-    # === RISULTATI ===
-    if st.session_state.analysis_done and st.session_state.analysis_scores:
-        scores = st.session_state.analysis_scores
-        st.markdown("---")
-        st.markdown("## \U0001F3AF Risultati Analisi")
-        display_scores_table(scores)
-        display_score_history_chart(history)
+    # Build HTML calendar
+    c = cal_module.Calendar(firstweekday=0)
+    weeks = c.monthdayscalendar(year, month)
 
-if __name__ == "__main__":
-    main()
+    html = '<table style="width:100%;border-collapse:collapse;text-align:center;font-size:14px;">'
+    html += '<tr>'
+    for day_name in ["Lu","Ma","Me","Gi","Ve","Sa","Do"]:
+        html += f'<th style="padding:4px;color:#888;font-weight:600;font-size:12px;">{day_name}</th>'
+    html += '</tr>'
+
+    for week in weeks:
+        html += '<tr>'
+        for d in week:
+            if d == 0:
+                html += '<td style="padding:4px;"></td>'
+            else:
+                date_str = f"{year}-{month:02d}-{d:02d}"
+                is_today = (d == today.day and month == today.month and year == today.year)
+                has_analysis = date_str in analysis_map
+
+                if has_analysis:
+                    html += f'<td style="padding:4px;"><span style="color:#22c55e;font-weight:bold;">{d}</span></td>'
+                elif is_today:
+                    html += f'<td style="padding:4px;"><span style="background:#3b82f6;color:white;border-radius:50%;padding:2px 6px;font-weight:bold;">{d}</span></td>'
+                else:
+                    html += f'<td style="padding:4px;color:#555;">{d}</td>'
+        html += '</tr>'
+    html += '</table>'
+
+    st.sidebar.markdown(html, unsafe_allow_html=True)
+    st.sidebar.caption("🟢 Analisi salvata | 🔵 Oggi")
+
+    # Dropdown per selezionare analisi
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("📅 **Carica analisi:**")
+    dates_with_analysis = [h.get("analysis_date", "") for h in history if h.get("analysis_date")]
+    selected_date = st.sidebar.selectbox("Seleziona data", ["-- Seleziona data --"] + dates_with_analysis, key="sel_date", label_visibility="collapsed")
+
+    selected = None
+    if selected_date and selected_date != "-- Seleziona data --":
+        selected = analysis_map.get(selected_date)
+
+    if st.sidebar.button("📅 Vai a Oggi"):
+        st.session_state.cal_year = today.year
+        st.session_state.cal_month = today.month
+        st.rerun()
+
+    return selected
+
+
+# ============================================================================
+# VISUALIZZAZIONE ANALISI PASSATA
+# ============================================================================
+
+def display_past_analysis(hist):
+    """Mostra analisi passata con punteggi + dati completi incluse serie storiche."""
+    date = hist.get("analysis_date", "N/A")
+    score = hist.get("total_score", 0)
+    bias = hist.get("bias", "N/A")
+    gold_price = hist.get("gold_price", 0)
+
+    st.markdown(f"## 📅 Analisi del {date}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Score", f"{score:+d}")
+    c2.metric("Bias", bias)
+    c3.metric("Gold Price", f"${gold_price:,.2f}" if gold_price else "N/A")
+
+    # Tabella punteggi
+    st.markdown("### 🎯 Punteggi")
+    try:
+        scores = json.loads(hist.get("scores_json", "{}"))
+        if scores:
+            scores["TOTAL"] = {"total_score": score, "bias": bias}
+            display_scores_table(scores)
+    except:
+        pass
+
+    # Dati completi
+    st.markdown("### 📊 Dati Utilizzati")
+    try:
+        raw = json.loads(hist.get("claude_response", "{}"))
+        if not raw:
+            st.info("Dati grezzi non disponibili per questa analisi")
+            return
+    except:
+        st.info("Dati grezzi non disponibili per questa analisi")
+        return
+
+    # Supporta sia formato nuovo (fred/yahoo/gld/fed/cot) che vecchio (fred_data_summary etc)
+    fred = raw.get("fred", raw.get("fred_data_summary", {}))
+    yahoo = raw.get("yahoo", raw.get("yahoo_data_summary", {}))
+    gld = raw.get("gld", raw.get("gld_data_summary", {}))
+    fed = raw.get("fed", raw.get("fed_data_summary", {}))
+    cot = raw.get("cot", raw.get("cot_data_summary", {}))
+
+    # DFII10
+    d = fred.get("DFII10", {})
+    if d:
+        info = INDICATOR_INFO.get("DFII10", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'DFII10')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Tasso Reale %", ".4f")
+        st.markdown("---")
+
+    # T10YIE
+    d = fred.get("T10YIE", {})
+    if d:
+        info = INDICATOR_INFO.get("T10YIE", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'T10YIE')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Breakeven %", ".4f")
+        st.markdown("---")
+
+    # DXY
+    d = yahoo.get("DXY", {})
+    if d:
+        info = INDICATOR_INFO.get("DXY", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'DXY')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "DXY", ".2f")
+        st.markdown("---")
+
+    # Fed Spread
+    dff = fred.get("DFF", {})
+    dgs2 = fred.get("DGS2", {})
+    if dff and dgs2:
+        info = INDICATOR_INFO.get("FED_SPREAD", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'Fed Spread')}")
+        dff_val = dff.get("latest_value", dff.get("value", 0))
+        dgs2_val = dgs2.get("latest_value", dgs2.get("value", 0))
+        try:
+            spread = float(dff_val) - float(dgs2_val)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("FFR", f"{dff_val}%")
+            c2.metric("Treasury 2Y", f"{dgs2_val}%")
+            c3.metric("Spread", f"{spread:+.4f}%")
+        except:
+            pass
+        # Spread history if available
+        if dff.get("values") and dgs2.get("values"):
+            dff_dict = {v["date"]: v["value"] for v in dff["values"]}
+            spread_hist = []
+            for v in dgs2["values"]:
+                if v["date"] in dff_dict:
+                    spread_hist.append({"date": v["date"], "value": round(dff_dict[v["date"]] - v["value"], 4)})
+            if len(spread_hist) >= 2:
+                _show_mini_history(spread_hist, "Spread %", ".4f")
+        st.markdown("---")
+
+    # GLD
+    if gld and (gld.get("latest_tonnes") or gld.get("tonnes")):
+        info = INDICATOR_INFO.get("GLD", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'GLD')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tonnellate", f"{gld.get('latest_tonnes', gld.get('tonnes', 'N/A'))}t")
+        c2.metric("Data", gld.get("latest_date", gld.get("date", "N/A")))
+        if gld.get("values") and len(gld["values"]) >= 2:
+            _show_mini_history(gld["values"], "Tonnellate", ".2f")
+        st.markdown("---")
+
+    # VIX
+    d = yahoo.get("VIX", {})
+    if d:
+        info = INDICATOR_INFO.get("VIX", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'VIX')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "VIX", ".2f")
+        st.markdown("---")
+
+    # COT
+    if cot:
+        info = INDICATOR_INFO.get("COT", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'COT')}")
+        rows = []
+        for asset_key in ["GOLD", "USD"]:
+            d = cot.get(asset_key, {})
+            if d:
+                net = d.get("net_long", 0)
+                ci = d.get("cot_index", 0)
+                rows.append({
+                    "Asset": "🥇 Oro" if asset_key == "GOLD" else "💵 USD Index",
+                    "Net Position": f"{_net_emoji(net)} {net:+,}",
+                    "COT Index": f"{_index_emoji(ci)} {ci:.0f}%",
+                    "Interpretazione": d.get("interpretation", "N/A"),
+                })
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        if cot.get("latest_date"):
+            st.caption(f"Dati report: {cot['latest_date']}")
+        st.markdown("---")
+
+    # Fed Trend
+    if fed:
+        info = INDICATOR_INFO.get("FED_TREND", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'Fed Trend')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tasso", fed.get("current_rate", fed.get("rate", "N/A")))
+        c2.metric("Trend", f"{fed.get('trend_emoji', '')} {fed.get('trend_label', fed.get('trend', 'N/A'))}")
+        for m in fed.get("meetings", []):
+            st.markdown(f"- **{m.get('date_formatted', 'N/A')}**: {m.get('change', 'N/A')}")
+
+import json
