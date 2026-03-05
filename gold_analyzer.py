@@ -183,6 +183,31 @@ def main():
         if f"{dk}_ts" not in st.session_state:
             st.session_state[f"{dk}_ts"] = None
 
+    # === AUTO-LOAD: carica ultimi dati dall'ultima analisi salvata ===
+    if "last_analysis_loaded" not in st.session_state:
+        st.session_state.last_analysis_loaded = False
+
+    if not st.session_state.last_analysis_loaded and history:
+        last = history[0]  # la piu recente
+        last_date = last.get("analysis_date", "N/A")
+        try:
+            raw = json.loads(last.get("claude_response", "{}"))
+            last_scores = json.loads(last.get("scores_json", "{}"))
+            if raw and last_scores:
+                st.session_state.last_analysis_data = raw
+                st.session_state.last_analysis_date = last_date
+                st.session_state.last_analysis_scores = last_scores
+                st.session_state.last_analysis_scores["TOTAL"] = {
+                    "total_score": last.get("total_score", 0),
+                    "bias": last.get("bias", "N/A"),
+                }
+                # Mostra anche l'ultimo risultato
+                st.session_state.analysis_scores = st.session_state.last_analysis_scores
+                st.session_state.analysis_done = True
+        except:
+            pass
+        st.session_state.last_analysis_loaded = True
+
     # === SEZIONE DATA SOURCES CON BOTTONI ===
     st.markdown("## \U0001F4E5 Fonti Dati")
 
@@ -224,14 +249,26 @@ def main():
 
     # === SCHEDE INDICATORI (SEMPRE APERTE) ===
     st.markdown("---")
-    st.markdown("## \U0001F4CA Indicatori")
-    display_indicator_cards(
-        fred_data=st.session_state.fred_data or {},
-        yahoo_data=st.session_state.yahoo_data or {},
-        gld_data=st.session_state.gld_data or {},
-        fed_data=st.session_state.fed_data or {},
-        cot_data=st.session_state.cot_data,
-    )
+
+    # Se non ci sono dati live ma c'e un'ultima analisi salvata, mostra quei dati
+    has_live_data = st.session_state.fred_data or st.session_state.yahoo_data
+    last_raw = st.session_state.get("last_analysis_data")
+    last_date = st.session_state.get("last_analysis_date")
+
+    if not has_live_data and last_raw and last_date:
+        st.info(f"\U0001F4C5 Ultimi dati disponibili dall'analisi del **{last_date}**. Clicca \"Aggiorna TUTTO\" per dati freschi.")
+        st.markdown("## \U0001F4CA Indicatori (da ultima analisi)")
+        from gold_ui import display_last_analysis_indicators
+        display_last_analysis_indicators(last_raw)
+    else:
+        st.markdown("## \U0001F4CA Indicatori")
+        display_indicator_cards(
+            fred_data=st.session_state.fred_data or {},
+            yahoo_data=st.session_state.yahoo_data or {},
+            gld_data=st.session_state.gld_data or {},
+            fed_data=st.session_state.fed_data or {},
+            cot_data=st.session_state.cot_data,
+        )
 
     # === AVVIA ANALISI ===
     st.markdown("---")
