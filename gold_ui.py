@@ -479,7 +479,7 @@ def display_score_history_chart(history):
     recent_df = pd.DataFrame(recent)
     recent_df["Score"] = recent_df["Score"].apply(lambda x: f"{x:+d}")
     recent_df["Gold ($)"] = recent_df["Gold ($)"].apply(lambda x: f"${x:,.2f}" if x else "N/A")
-    recent_df["Data"] = recent_df["Data"].dt.strftime("%d/%m/%Y")
+    recent_df["Data"] = pd.to_datetime(recent_df["Data"]).dt.strftime("%d/%m/%Y")
     st.dataframe(recent_df, use_container_width=True, hide_index=True)
 
 
