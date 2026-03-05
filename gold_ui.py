@@ -391,7 +391,7 @@ def display_scores_table(scores):
         bias_emoji = "🔴🔴"
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("PUNTEGGIO TOTALE", f"{ts:+d} / ±16")
+    c1.metric("PUNTEGGIO TOTALE", f"{ts:+d}")
     c2.metric("BIAS", f"{bias_emoji} {bias}")
     # Barra visuale
     pct = max(0.01, min(0.99, (ts + 16) / 32))
@@ -525,7 +525,7 @@ def display_past_analysis(hist):
 
     st.markdown(f"## \U0001F4C5 Analisi del {date}")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Score", f"{score:+d} / \u00B116")
+    c1.metric("Score", f"{score:+d}")
     c2.metric("Bias", bias)
     c3.metric("Gold Price", f"${gold_price:,.2f}" if gold_price else "N/A")
 
