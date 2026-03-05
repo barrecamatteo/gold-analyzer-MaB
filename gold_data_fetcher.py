@@ -260,15 +260,7 @@ def calculate_all_scores(fred_data, yahoo_data, fed_data,
             f"USD {'Long' if ps_u>0 else 'Short' if ps_u<0 else 'Neutro'} ({ps_u_inv:+d} inv.), mom {'\u2191' if cm_u_inv>0 else '\u2193' if cm_u_inv<0 else '\u2192'} ({cm_u_inv:+d})")
     else: scores["COT_USD"] = _empty("COT USD Index",_cot_usd.get("error") if _cot_usd else "Non caricato",2)
 
-    # 6. Banche Centrali
-    if cb_data and not cb_data.get("error"):
-        scores["CB"] = _make_score("Banche Centrali (acquisti oro)",
-            cb_data.get("display_value","N/A"),cb_data.get("net_purchases",0),
-            cb_data.get("latest_date"),cb_data.get("delta_display","N/A"),
-            cb_data.get("delta",0),0,cb_data.get("score",0),1,"IMF/WGC",cb_data.get("comment",""))
-    else: scores["CB"] = _empty("Banche Centrali",cb_data.get("error") if cb_data else "Non caricato",1)
-
-    # 7. Fed Trend
+    # 5. Fed Trend
     if fed_data and not fed_data.get("error"):
         t = fed_data.get("trend","unknown")
         fs = {"cutting":1,"easing":1,"pause_after_cut":1,"holding":0,
@@ -282,7 +274,7 @@ def calculate_all_scores(fred_data, yahoo_data, fed_data,
             f"{fed_data.get('trend_emoji','')} {fed_data.get('trend_label','N/A')} — {mtgs}")
     else: scores["FED_TREND"] = _empty("Fed Trend (ciclo FOMC)",fed_data.get("error") if fed_data else "Non caricato",1)
 
-    # 8. Fed Expectations
+    # 6. Fed Expectations
     dff, dgs2 = fred_data.get("DFF",{}), fred_data.get("DGS2",{})
     if dff.get("latest_value") is not None and dgs2.get("latest_value") is not None:
         ffr, t2y = dff["latest_value"], dgs2["latest_value"]
@@ -298,7 +290,7 @@ def calculate_all_scores(fred_data, yahoo_data, fed_data,
             lv,mv,2,"FRED",f"{lt} ({lv:+d}), {'piu tagli' if mv>0 else 'meno tagli' if mv<0 else 'stabile'} ({mv:+d})")
     else: scores["FED_EXPECT"] = _empty("Fed Expectations (FFR-2Y)","Dati mancanti",2)
 
-    # 9. VIX
+    # 7. VIX
     d = yahoo_data.get("VIX",{})
     if d.get("latest_value") is not None and not d.get("error"):
         cv, pv = d["latest_value"], _get_past_value(d.get("values",[]),1)
@@ -309,7 +301,7 @@ def calculate_all_scores(fred_data, yahoo_data, fed_data,
             lv,mv,2,"Yahoo Finance",f"{'Risk-off' if lv>0 else 'Risk-on' if lv<0 else 'Neutro'} ({lv:+d}), {'spike' if mv>0 else 'calo' if mv<0 else 'stabile'} ({mv:+d})")
     else: scores["VIX"] = _empty("VIX (Risk Sentiment)",d.get("error"),2)
 
-    # 10. Stagionalita
+    # 8. Stagionalita
     s = GOLD_SEASONALITY.get(now.month,{"score":0,"label":"Neutro","reason":""})
     scores["SEASONALITY"] = _make_score("Stagionalita",now.strftime("%B"),now.month,
         now.strftime("%Y-%m-%d"),"N/A",None,s["score"],0,1,"Pattern storico",f"{s['label']} — {s['reason']}")
