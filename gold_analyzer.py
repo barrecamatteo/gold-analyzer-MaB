@@ -107,7 +107,6 @@ def check_freshness(data_key, last_updated):
     return {"is_fresh": False, "status": "\U0001F7E0", "message": f"{date_str}", "ago": f"{int(age_h)}h fa"}
 
 def fetch_source(key):
-    """Fetch a single data source by key."""
     if key == "fred_data":
         return fetch_all_fred_data(st.secrets["fred"]["api_key"])
     elif key == "yahoo_data":
@@ -119,6 +118,75 @@ def fetch_source(key):
     elif key == "cot_data":
         return get_all_cot_analysis()
     return None
+
+def _build_raw_data_for_save():
+    """Costruisce il blob di dati grezzi completo per il salvataggio, incluse serie storiche."""
+    raw = {"fred": {}, "yahoo": {}, "gld": {}, "fed": {}, "cot": {}, "timestamps": {}}
+
+    # FRED - salva anche serie storiche (ultimi 10 punti)
+    if st.session_state.fred_data:
+        for sid, d in st.session_state.fred_data.items():
+            if not d.get("error"):
+                raw["fred"][sid] = {
+                    "latest_value": d.get("latest_value"),
+                    "latest_date": d.get("latest_date"),
+                    "values": d.get("values", [])[:10],
+                }
+
+    # Yahoo - salva anche serie storiche
+    if st.session_state.yahoo_data:
+        for tk, d in st.session_state.yahoo_data.items():
+            if not d.get("error"):
+                raw["yahoo"][tk] = {
+                    "latest_value": d.get("latest_value"),
+                    "latest_date": d.get("latest_date"),
+                    "values": d.get("values", [])[:10],
+                }
+
+    # GLD - serie storica
+    if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
+        raw["gld"] = {
+            "latest_tonnes": st.session_state.gld_data.get("latest_tonnes"),
+            "latest_date": st.session_state.gld_data.get("latest_date"),
+            "values": st.session_state.gld_data.get("values", [])[:10],
+            "source": st.session_state.gld_data.get("source", ""),
+        }
+
+    # Fed - meetings completi
+    if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
+        raw["fed"] = {
+            "current_rate": st.session_state.fed_data.get("current_rate"),
+            "trend_label": st.session_state.fed_data.get("trend_label"),
+            "trend_emoji": st.session_state.fed_data.get("trend_emoji"),
+            "meetings": st.session_state.fed_data.get("meetings", [])[:8],
+        }
+
+    # COT - entrambi gli asset con dettaglio
+    if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
+        for asset_key in ["GOLD", "USD"]:
+            d = st.session_state.cot_data.get(asset_key, {})
+            if d and not d.get("error"):
+                raw["cot"][asset_key] = {
+                    "net_long": d.get("net_long"),
+                    "cot_index": d.get("cot_index"),
+                    "delta_1w": d.get("delta_1w"),
+                    "ma_4w": d.get("ma_4w"),
+                    "delta_vs_ma": d.get("delta_vs_ma"),
+                    "min_52w": d.get("min_52w"),
+                    "max_52w": d.get("max_52w"),
+                    "pos_score": d.get("pos_score"),
+                    "momentum_score": d.get("momentum_score"),
+                    "total_score": d.get("total_score"),
+                    "interpretation": d.get("interpretation"),
+                    "latest_date": d.get("latest_date"),
+                }
+        raw["cot"]["latest_date"] = st.session_state.cot_data.get("latest_date", "")
+
+    # Timestamps
+    for dk in DATA_SOURCES:
+        raw["timestamps"][dk] = st.session_state.get(f"{dk}_ts", "N/A")
+
+    return raw
 
 # === MAIN ===
 def main():
@@ -183,35 +251,41 @@ def main():
         if f"{dk}_ts" not in st.session_state:
             st.session_state[f"{dk}_ts"] = None
 
-    # === AUTO-LOAD: carica ultimi dati dall'ultima analisi salvata ===
-    if "last_analysis_loaded" not in st.session_state:
-        st.session_state.last_analysis_loaded = False
+    # === AUTO-LOAD: al primo accesso scarica dati freschi + carica ultimo risultato ===
+    if "initial_load_done" not in st.session_state:
+        st.session_state.initial_load_done = False
 
-    if not st.session_state.last_analysis_loaded and history:
-        last = history[0]  # la piu recente
-        last_date = last.get("analysis_date", "N/A")
-        try:
-            raw = json.loads(last.get("claude_response", "{}"))
-            last_scores = json.loads(last.get("scores_json", "{}"))
-            if raw and last_scores:
-                st.session_state.last_analysis_data = raw
-                st.session_state.last_analysis_date = last_date
-                st.session_state.last_analysis_scores = last_scores
-                st.session_state.last_analysis_scores["TOTAL"] = {
-                    "total_score": last.get("total_score", 0),
-                    "bias": last.get("bias", "N/A"),
-                }
-                # Mostra anche l'ultimo risultato
-                st.session_state.analysis_scores = st.session_state.last_analysis_scores
-                st.session_state.analysis_done = True
-        except:
-            pass
-        st.session_state.last_analysis_loaded = True
+    if not st.session_state.initial_load_done:
+        # Carica ultimo risultato analisi
+        if history:
+            last = history[0]
+            try:
+                last_scores = json.loads(last.get("scores_json", "{}"))
+                if last_scores:
+                    last_scores["TOTAL"] = {
+                        "total_score": last.get("total_score", 0),
+                        "bias": last.get("bias", "N/A"),
+                    }
+                    st.session_state.analysis_scores = last_scores
+                    st.session_state.analysis_done = True
+                    st.session_state.last_analysis_date = last.get("analysis_date", "N/A")
+            except:
+                pass
+
+        # Scarica automaticamente tutti i dati freschi
+        with st.spinner("Caricamento dati in corso..."):
+            for dk in DATA_SOURCES:
+                try:
+                    st.session_state[dk] = fetch_source(dk)
+                    st.session_state[f"{dk}_ts"] = get_italy_now().isoformat()
+                except:
+                    pass
+        st.session_state.initial_load_done = True
+        st.rerun()
 
     # === SEZIONE DATA SOURCES CON BOTTONI ===
     st.markdown("## \U0001F4E5 Fonti Dati")
 
-    # Aggiorna TUTTO
     if st.button("\U0001F504 Aggiorna TUTTO", type="primary"):
         with st.spinner("Aggiornamento completo..."):
             for dk in DATA_SOURCES:
@@ -226,7 +300,6 @@ def main():
 
     st.markdown("")
 
-    # Riga per ogni data source con bottone + stato
     for dk, cfg in DATA_SOURCES.items():
         f = check_freshness(dk, st.session_state.get(f"{dk}_ts"))
         c1, c2, c3, c4 = st.columns([0.5, 3, 2, 1.5])
@@ -250,25 +323,18 @@ def main():
     # === SCHEDE INDICATORI (SEMPRE APERTE) ===
     st.markdown("---")
 
-    # Se non ci sono dati live ma c'e un'ultima analisi salvata, mostra quei dati
-    has_live_data = st.session_state.fred_data or st.session_state.yahoo_data
-    last_raw = st.session_state.get("last_analysis_data")
     last_date = st.session_state.get("last_analysis_date")
+    if last_date and st.session_state.analysis_done:
+        st.info(f"\U0001F4C5 Ultima analisi salvata: **{last_date}**")
 
-    if not has_live_data and last_raw and last_date:
-        st.info(f"\U0001F4C5 Ultimi dati disponibili dall'analisi del **{last_date}**. Clicca \"Aggiorna TUTTO\" per dati freschi.")
-        st.markdown("## \U0001F4CA Indicatori (da ultima analisi)")
-        from gold_ui import display_last_analysis_indicators
-        display_last_analysis_indicators(last_raw)
-    else:
-        st.markdown("## \U0001F4CA Indicatori")
-        display_indicator_cards(
-            fred_data=st.session_state.fred_data or {},
-            yahoo_data=st.session_state.yahoo_data or {},
-            gld_data=st.session_state.gld_data or {},
-            fed_data=st.session_state.fed_data or {},
-            cot_data=st.session_state.cot_data,
-        )
+    st.markdown("## \U0001F4CA Indicatori")
+    display_indicator_cards(
+        fred_data=st.session_state.fred_data or {},
+        yahoo_data=st.session_state.yahoo_data or {},
+        gld_data=st.session_state.gld_data or {},
+        fed_data=st.session_state.fed_data or {},
+        cot_data=st.session_state.cot_data,
+    )
 
     # === AVVIA ANALISI ===
     st.markdown("---")
@@ -287,55 +353,11 @@ def main():
             cot_data=st.session_state.cot_data,
         )
         gold_price = scores.get("GOLD_PRICE", {}).get("value_raw", 0)
-
-        # Prepara raw data per salvataggio
-        raw_data = {
-            "fred_data_summary": {},
-            "yahoo_data_summary": {},
-            "gld_data_summary": {},
-            "fed_data_summary": {},
-            "cot_data_summary": {},
-            "timestamps": {},
-        }
-        if st.session_state.fred_data:
-            for sid, d in st.session_state.fred_data.items():
-                if not d.get("error"):
-                    raw_data["fred_data_summary"][sid] = {
-                        "value": d.get("latest_value"), "date": d.get("latest_date"),
-                    }
-        if st.session_state.yahoo_data:
-            for tk, d in st.session_state.yahoo_data.items():
-                if not d.get("error"):
-                    raw_data["yahoo_data_summary"][tk] = {
-                        "value": d.get("latest_value"), "date": d.get("latest_date"),
-                    }
-        if st.session_state.gld_data and not st.session_state.gld_data.get("error"):
-            raw_data["gld_data_summary"] = {
-                "tonnes": st.session_state.gld_data.get("latest_tonnes"),
-                "date": st.session_state.gld_data.get("latest_date"),
-            }
-        if st.session_state.fed_data and not st.session_state.fed_data.get("error"):
-            raw_data["fed_data_summary"] = {
-                "rate": st.session_state.fed_data.get("current_rate"),
-                "trend": st.session_state.fed_data.get("trend_label"),
-                "meetings": st.session_state.fed_data.get("meetings", [])[:5],
-            }
-        if st.session_state.cot_data and not st.session_state.cot_data.get("error"):
-            for asset_key in ["GOLD", "USD"]:
-                d = st.session_state.cot_data.get(asset_key, {})
-                if d and not d.get("error"):
-                    raw_data["cot_data_summary"][asset_key] = {
-                        "net_long": d.get("net_long"), "cot_index": d.get("cot_index"),
-                        "delta_1w": d.get("delta_1w"), "ma_4w": d.get("ma_4w"),
-                        "interpretation": d.get("interpretation"),
-                    }
-        for dk in DATA_SOURCES:
-            raw_data["timestamps"][dk] = st.session_state.get(f"{dk}_ts", "N/A")
-
-        # Salva automaticamente
+        raw_data = _build_raw_data_for_save()
         save_analysis(st.session_state.user_id, scores, gold_price, raw_data)
         st.session_state.analysis_scores = scores
         st.session_state.analysis_done = True
+        st.session_state.last_analysis_date = get_italy_now().strftime("%Y-%m-%d")
         st.rerun()
 
     # === RISULTATI ===
@@ -344,7 +366,6 @@ def main():
         st.markdown("---")
         st.markdown("## \U0001F3AF Risultati Analisi")
         display_scores_table(scores)
-        st.success("Analisi salvata automaticamente!")
 
 if __name__ == "__main__":
     main()
