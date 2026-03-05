@@ -342,128 +342,6 @@ def _display_cot_table(cot_data):
 
 
 # ============================================================================
-# DISPLAY LAST ANALYSIS INDICATORS (da dati salvati)
-# ============================================================================
-
-def display_last_analysis_indicators(raw_data):
-    """Mostra gli indicatori dall'ultima analisi salvata (dati grezzi dal DB)."""
-
-    # FRED
-    fred = raw_data.get("fred_data_summary", {})
-    if fred:
-        for sid in ["DFII10", "T10YIE"]:
-            d = fred.get(sid)
-            if d:
-                info = INDICATOR_INFO.get(sid, {})
-                st.markdown(f"### {info.get('icon', '')} {info.get('title', sid)}")
-                st.markdown(f"**Cos’è:** {info.get('what', '')}")
-                st.markdown(f"**Perché conta:** {info.get('why', '')}")
-                c1, c2 = st.columns(2)
-                c1.metric("Valore", f"{d['value']}")
-                c2.metric("Data", d.get("date", "N/A"))
-                st.markdown("---")
-
-        # DXY from yahoo
-        yahoo = raw_data.get("yahoo_data_summary", {})
-        dxy = yahoo.get("DXY")
-        if dxy:
-            info = INDICATOR_INFO.get("DXY", {})
-            st.markdown(f"### {info.get('icon', '')} {info.get('title', 'DXY')}")
-            st.markdown(f"**Cos’è:** {info.get('what', '')}")
-            st.markdown(f"**Perché conta:** {info.get('why', '')}")
-            c1, c2 = st.columns(2)
-            c1.metric("Valore", f"{dxy['value']}")
-            c2.metric("Data", dxy.get("date", "N/A"))
-            st.markdown("---")
-
-        # Fed Spread
-        dff = fred.get("DFF")
-        dgs2 = fred.get("DGS2")
-        if dff and dgs2:
-            info = INDICATOR_INFO.get("FED_SPREAD", {})
-            st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Fed Spread')}")
-            st.markdown(f"**Cos’è:** {info.get('what', '')}")
-            st.markdown(f"**Perché conta:** {info.get('why', '')}")
-            spread = dff["value"] - dgs2["value"]
-            c1, c2, c3 = st.columns(3)
-            c1.metric("FFR", f"{dff['value']}%")
-            c2.metric("Treasury 2Y", f"{dgs2['value']}%")
-            c3.metric("Spread", f"{spread:+.4f}%")
-            st.markdown("---")
-
-    # GLD
-    gld = raw_data.get("gld_data_summary", {})
-    if gld and gld.get("tonnes"):
-        info = INDICATOR_INFO.get("GLD", {})
-        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'GLD')}")
-        st.markdown(f"**Cos’è:** {info.get('what', '')}")
-        st.markdown(f"**Perché conta:** {info.get('why', '')}")
-        c1, c2 = st.columns(2)
-        c1.metric("Tonnellate", f"{gld['tonnes']}t")
-        c2.metric("Data", gld.get("date", "N/A"))
-        st.markdown("---")
-
-    # VIX
-    yahoo = raw_data.get("yahoo_data_summary", {})
-    vix = yahoo.get("VIX")
-    if vix:
-        info = INDICATOR_INFO.get("VIX", {})
-        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'VIX')}")
-        st.markdown(f"**Cos’è:** {info.get('what', '')}")
-        st.markdown(f"**Perché conta:** {info.get('why', '')}")
-        c1, c2 = st.columns(2)
-        c1.metric("Valore", f"{vix['value']}")
-        c2.metric("Data", vix.get("date", "N/A"))
-        st.markdown("---")
-
-    # COT
-    cot = raw_data.get("cot_data_summary", {})
-    if cot:
-        info = INDICATOR_INFO.get("COT", {})
-        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'COT')}")
-        st.markdown(f"**Cos’è:** {info.get('what', '')}")
-        st.markdown(f"**Perché conta:** {info.get('why', '')}")
-        rows = []
-        for asset_key in ["GOLD", "USD"]:
-            d = cot.get(asset_key, {})
-            if d:
-                rows.append({
-                    "Asset": "🥇 Oro" if asset_key == "GOLD" else "💵 USD Index",
-                    "Net Position": f"{d.get('net_long', 0):+,}",
-                    "COT Index": f"{d.get('cot_index', 0):.0f}%",
-                    "Interpretazione": d.get("interpretation", "N/A"),
-                })
-        if rows:
-            df = pd.DataFrame(rows)
-            st.dataframe(df, use_container_width=True, hide_index=True)
-        st.markdown("---")
-
-    # Fed Trend
-    fed = raw_data.get("fed_data_summary", {})
-    if fed:
-        info = INDICATOR_INFO.get("FED_TREND", {})
-        st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Fed Trend')}")
-        st.markdown(f"**Cos’è:** {info.get('what', '')}")
-        st.markdown(f"**Perché conta:** {info.get('why', '')}")
-        c1, c2 = st.columns(2)
-        c1.metric("Tasso", fed.get("rate", "N/A"))
-        c2.metric("Trend", fed.get("trend", "N/A"))
-        for m in fed.get("meetings", []):
-            st.markdown(f"- **{m.get('date_formatted', 'N/A')}**: {m.get('change', 'N/A')}")
-        st.markdown("---")
-
-    # Stagionalita
-    info = INDICATOR_INFO.get("SEASONALITY", {})
-    st.markdown(f"### {info.get('icon', '')} {info.get('title', 'Stagionalita')}")
-    st.markdown(f"**Cos’è:** {info.get('what', '')}")
-    st.markdown(f"**Perché conta:** {info.get('why', '')}")
-    from datetime import datetime as dt_mod
-    month_names = {1:"Gennaio",2:"Febbraio",3:"Marzo",4:"Aprile",5:"Maggio",6:"Giugno",
-                   7:"Luglio",8:"Agosto",9:"Settembre",10:"Ottobre",11:"Novembre",12:"Dicembre"}
-    st.markdown(f"**Mese corrente:** {month_names.get(dt_mod.now().month, '?')}")
-
-
-# ============================================================================
 # TABELLA RIEPILOGO PUNTEGGI
 # ============================================================================
 
@@ -639,75 +517,163 @@ def display_calendar_sidebar(history):
 # ============================================================================
 
 def display_past_analysis(hist):
-    """Mostra analisi passata con stessa UI dell'analisi corrente."""
+    """Mostra analisi passata con punteggi + dati completi incluse serie storiche."""
     date = hist.get("analysis_date", "N/A")
+    score = hist.get("total_score", 0)
+    bias = hist.get("bias", "N/A")
     gold_price = hist.get("gold_price", 0)
 
     st.markdown(f"## 📅 Analisi del {date}")
-    if gold_price:
-        st.metric("💰 Prezzo XAU/USD", f"${gold_price:,.2f}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Score", f"{score:+d}")
+    c2.metric("Bias", bias)
+    c3.metric("Gold Price", f"${gold_price:,.2f}" if gold_price else "N/A")
 
-    # Ricostruisci scores nello stesso formato di calculate_all_scores
+    # Tabella punteggi
+    st.markdown("### 🎯 Punteggi")
     try:
         scores = json.loads(hist.get("scores_json", "{}"))
-        scores["TOTAL"] = {
-            "total_score": hist.get("total_score", 0),
-            "bias": hist.get("bias", "N/A"),
-        }
-        if gold_price:
-            scores["GOLD_PRICE"] = {"value": f"${gold_price:,.2f}", "value_raw": gold_price}
-        # Usa la stessa tabella dell'analisi corrente
-        display_scores_table(scores)
+        if scores:
+            scores["TOTAL"] = {"total_score": score, "bias": bias}
+            display_scores_table(scores)
     except:
-        st.warning("Impossibile caricare i punteggi per questa analisi")
+        pass
 
-    # Dati grezzi sotto
-    st.markdown("---")
-    st.markdown("### 📥 Dati Grezzi del giorno")
+    # Dati completi
+    st.markdown("### 📊 Dati Utilizzati")
     try:
         raw = json.loads(hist.get("claude_response", "{}"))
-        if raw:
-            cols = st.columns(2)
-            # FRED
-            fred = raw.get("fred_data_summary", {})
-            if fred:
-                with cols[0]:
-                    st.markdown("**📈 FRED**")
-                    for sid, d in fred.items():
-                        st.markdown(f"- **{sid}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
-
-            # Yahoo
-            yahoo = raw.get("yahoo_data_summary", {})
-            if yahoo:
-                with cols[1]:
-                    st.markdown("**💹 Yahoo Finance**")
-                    for tk, d in yahoo.items():
-                        st.markdown(f"- **{tk}**: {d.get('value', 'N/A')} (al {d.get('date', 'N/A')})")
-
-            cols2 = st.columns(2)
-            # GLD
-            gld = raw.get("gld_data_summary", {})
-            if gld and gld.get("tonnes"):
-                with cols2[0]:
-                    st.markdown(f"**🥇 GLD Holdings:** {gld['tonnes']}t (al {gld.get('date', 'N/A')})")
-
-            # Fed
-            fed = raw.get("fed_data_summary", {})
-            if fed:
-                with cols2[1]:
-                    st.markdown(f"**🏛️ Fed:** Tasso {fed.get('rate', 'N/A')} | Trend: {fed.get('trend', 'N/A')}")
-
-            # COT
-            cot = raw.get("cot_data_summary", {})
-            if cot:
-                st.markdown("**📋 COT:**")
-                cot_cols = st.columns(len(cot))
-                for i, (asset, d) in enumerate(cot.items()):
-                    with cot_cols[i]:
-                        st.markdown(f"**{asset}**: Net {d.get('net_long', 0):+,} | Index {d.get('cot_index', 0):.0f}% | {d.get('interpretation', 'N/A')}")
-        else:
+        if not raw:
             st.info("Dati grezzi non disponibili per questa analisi")
+            return
     except:
         st.info("Dati grezzi non disponibili per questa analisi")
+        return
+
+    # Supporta sia formato nuovo (fred/yahoo/gld/fed/cot) che vecchio (fred_data_summary etc)
+    fred = raw.get("fred", raw.get("fred_data_summary", {}))
+    yahoo = raw.get("yahoo", raw.get("yahoo_data_summary", {}))
+    gld = raw.get("gld", raw.get("gld_data_summary", {}))
+    fed = raw.get("fed", raw.get("fed_data_summary", {}))
+    cot = raw.get("cot", raw.get("cot_data_summary", {}))
+
+    # DFII10
+    d = fred.get("DFII10", {})
+    if d:
+        info = INDICATOR_INFO.get("DFII10", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'DFII10')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Tasso Reale %", ".4f")
+        st.markdown("---")
+
+    # T10YIE
+    d = fred.get("T10YIE", {})
+    if d:
+        info = INDICATOR_INFO.get("T10YIE", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'T10YIE')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "Breakeven %", ".4f")
+        st.markdown("---")
+
+    # DXY
+    d = yahoo.get("DXY", {})
+    if d:
+        info = INDICATOR_INFO.get("DXY", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'DXY')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "DXY", ".2f")
+        st.markdown("---")
+
+    # Fed Spread
+    dff = fred.get("DFF", {})
+    dgs2 = fred.get("DGS2", {})
+    if dff and dgs2:
+        info = INDICATOR_INFO.get("FED_SPREAD", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'Fed Spread')}")
+        dff_val = dff.get("latest_value", dff.get("value", 0))
+        dgs2_val = dgs2.get("latest_value", dgs2.get("value", 0))
+        try:
+            spread = float(dff_val) - float(dgs2_val)
+            c1, c2, c3 = st.columns(3)
+            c1.metric("FFR", f"{dff_val}%")
+            c2.metric("Treasury 2Y", f"{dgs2_val}%")
+            c3.metric("Spread", f"{spread:+.4f}%")
+        except:
+            pass
+        # Spread history if available
+        if dff.get("values") and dgs2.get("values"):
+            dff_dict = {v["date"]: v["value"] for v in dff["values"]}
+            spread_hist = []
+            for v in dgs2["values"]:
+                if v["date"] in dff_dict:
+                    spread_hist.append({"date": v["date"], "value": round(dff_dict[v["date"]] - v["value"], 4)})
+            if len(spread_hist) >= 2:
+                _show_mini_history(spread_hist, "Spread %", ".4f")
+        st.markdown("---")
+
+    # GLD
+    if gld and (gld.get("latest_tonnes") or gld.get("tonnes")):
+        info = INDICATOR_INFO.get("GLD", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'GLD')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tonnellate", f"{gld.get('latest_tonnes', gld.get('tonnes', 'N/A'))}t")
+        c2.metric("Data", gld.get("latest_date", gld.get("date", "N/A")))
+        if gld.get("values") and len(gld["values"]) >= 2:
+            _show_mini_history(gld["values"], "Tonnellate", ".2f")
+        st.markdown("---")
+
+    # VIX
+    d = yahoo.get("VIX", {})
+    if d:
+        info = INDICATOR_INFO.get("VIX", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'VIX')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Valore", f"{d.get('latest_value', d.get('value', 'N/A'))}")
+        c2.metric("Data", d.get("latest_date", d.get("date", "N/A")))
+        if d.get("values") and len(d["values"]) >= 2:
+            _show_mini_history(d["values"], "VIX", ".2f")
+        st.markdown("---")
+
+    # COT
+    if cot:
+        info = INDICATOR_INFO.get("COT", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'COT')}")
+        rows = []
+        for asset_key in ["GOLD", "USD"]:
+            d = cot.get(asset_key, {})
+            if d:
+                net = d.get("net_long", 0)
+                ci = d.get("cot_index", 0)
+                rows.append({
+                    "Asset": "🥇 Oro" if asset_key == "GOLD" else "💵 USD Index",
+                    "Net Position": f"{_net_emoji(net)} {net:+,}",
+                    "COT Index": f"{_index_emoji(ci)} {ci:.0f}%",
+                    "Interpretazione": d.get("interpretation", "N/A"),
+                })
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        if cot.get("latest_date"):
+            st.caption(f"Dati report: {cot['latest_date']}")
+        st.markdown("---")
+
+    # Fed Trend
+    if fed:
+        info = INDICATOR_INFO.get("FED_TREND", {})
+        st.markdown(f"#### {info.get('icon', '')} {info.get('title', 'Fed Trend')}")
+        c1, c2 = st.columns(2)
+        c1.metric("Tasso", fed.get("current_rate", fed.get("rate", "N/A")))
+        c2.metric("Trend", f"{fed.get('trend_emoji', '')} {fed.get('trend_label', fed.get('trend', 'N/A'))}")
+        for m in fed.get("meetings", []):
+            st.markdown(f"- **{m.get('date_formatted', 'N/A')}**: {m.get('change', 'N/A')}")
 
 import json
